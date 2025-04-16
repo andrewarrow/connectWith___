@@ -1,7 +1,9 @@
 import SwiftUI
+import CoreBluetooth
 
 struct SplashScreen: View {
     @Binding var isShowingSplash: Bool
+    @EnvironmentObject private var bluetoothManager: BluetoothManager
     
     var body: some View {
         ZStack {
@@ -9,7 +11,7 @@ struct SplashScreen: View {
                 .ignoresSafeArea()
             
             VStack {
-                Text("connectWith___")
+                Text("12x")
                     .font(.system(size: 42, weight: .bold))
                     .foregroundColor(.white)
                     .padding()
@@ -27,6 +29,12 @@ struct SplashScreen: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation {
                     isShowingSplash = false
+                    
+                    // Start Bluetooth advertisement when we enter the app
+                    if bluetoothManager.permissionGranted {
+                        bluetoothManager.startAdvertising()
+                        bluetoothManager.startScanning()
+                    }
                 }
             }
         }
@@ -35,4 +43,5 @@ struct SplashScreen: View {
 
 #Preview {
     SplashScreen(isShowingSplash: .constant(true))
+        .environmentObject(BluetoothManager())
 }

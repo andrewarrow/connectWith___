@@ -23,6 +23,7 @@
 		38A1B8E02AC0D83A00EB14A5 /* SplashScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashScreen.swift; sourceTree = "<group>"; };
 		38A1B8E22AC0D84700EB14A5 /* MainMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuView.swift; sourceTree = "<group>"; };
 		38A1B8E42AC0D85400EB14A5 /* MenuButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuButton.swift; sourceTree = "<group>"; };
+		38A1B8E62AC0D85F00EB14A5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +56,7 @@
 		38A1B8CE2AC0D7B500EB14A5 /* ConnectWith */ = {
 			isa = PBXGroup;
 			children = (
+				38A1B8E62AC0D85F00EB14A5 /* Info.plist */,
 				38A1B8CF2AC0D7B500EB14A5 /* ConnectWithApp.swift */,
 				38A1B8DE2AC0D81E00EB14A5 /* Views */,
 				38A1B8D32AC0D7B600EB14A5 /* Assets.xcassets */,
@@ -292,8 +294,11 @@
 				DEVELOPMENT_TEAM = 755R3VBZ84;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ConnectWith/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 12x;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to find other nearby 12x users.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to find other nearby 12x users.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -325,8 +330,11 @@
 				DEVELOPMENT_TEAM = 755R3VBZ84;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ConnectWith/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 12x;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to find other nearby 12x users.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to find other nearby 12x users.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
