@@ -4,11 +4,11 @@ struct MenuButton: View {
     let title: String
     let iconName: String
     let color: Color
+    var action: (() -> Void)? = nil
     
     var body: some View {
         Button(action: {
-            // Action for button
-            print("\(title) button tapped")
+            action?() ?? print("\(title) button tapped")
         }) {
             HStack {
                 Image(systemName: iconName)
