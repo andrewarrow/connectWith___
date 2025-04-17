@@ -9,6 +9,8 @@ struct MainMenuView: View {
     @State private var showDeviceList = false
     @State private var showCalendarView = false
     @State private var customDeviceName = UserDefaults.standard.string(forKey: "DeviceCustomName") ?? ""
+    // Added to track if we're in onboarding mode (should always be false here since onboarding is completed)
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var connectedDevicesCount: Int {
         return DeviceStore.shared.getAllDevices().count
@@ -144,6 +146,18 @@ struct MainMenuView: View {
                 .padding(.vertical)
                 
                 Spacer()
+                
+                // Debug button to reset onboarding (for testing)
+                #if DEBUG
+                Button(action: {
+                    hasCompletedOnboarding = false
+                }) {
+                    Text("Reset Onboarding")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                .padding(.bottom, 8)
+                #endif
             }
             .padding()
             .navigationTitle("12× Family Outings")
@@ -170,11 +184,13 @@ struct MainMenuView: View {
                 FamilyCalendarView()
             }
             .onAppear {
+                // We should already have at least one device since onboarding is complete,
+                // but we can still start scanning again for more devices
                 if !hasCheckedPermission {
-                    // Auto-start scanning only if no devices in database
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if bluetoothManager.permissionGranted && connectedDevicesCount == 0 {
-                            bluetoothManager.startScanning()
+                        if bluetoothManager.permissionGranted {
+                            // Start advertising this device
+                            bluetoothManager.startAdvertising()
                         }
                         hasCheckedPermission = true
                     }
@@ -349,6 +365,9 @@ struct DeviceListView: View {
     @Environment(\.presentationMode) private var presentationMode
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @State private var storedDevices: [DeviceStore.StoredDevice] = []
+    @State private var deviceToRename: DeviceStore.StoredDevice? = nil
+    @State private var isRenamingDevice = false
+    @State private var newDeviceName = ""
     
     var body: some View {
         NavigationView {
@@ -360,12 +379,47 @@ struct DeviceListView: View {
                     // Show devices from memory store
                     ForEach(storedDevices, id: \.identifier) { device in
                         StoredDeviceRow(device: device)
+                            .contextMenu {
+                                Button(action: {
+                                    deviceToRename = device
+                                    newDeviceName = device.name
+                                    isRenamingDevice = true
+                                }) {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                            }
                     }
                     
                     // Also show current scan results
                     ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
                         let device = bluetoothManager.nearbyDevices[index]
                         DeviceRowView(peripheral: device.peripheral, advertisementData: device.advertisementData)
+                            .contextMenu {
+                                Button(action: {
+                                    // Get device name
+                                    let deviceName: String
+                                    if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+                                        deviceName = localName
+                                    } else if let name = device.peripheral.name, !name.isEmpty {
+                                        deviceName = name
+                                    } else {
+                                        deviceName = "Unknown Device"
+                                    }
+                                    
+                                    // Create temporary StoredDevice for renaming
+                                    deviceToRename = DeviceStore.StoredDevice(
+                                        identifier: device.peripheral.identifier.uuidString,
+                                        name: deviceName,
+                                        lastSeen: Date(),
+                                        manufacturerData: device.advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+                                        advertisementData: nil
+                                    )
+                                    newDeviceName = deviceName
+                                    isRenamingDevice = true
+                                }) {
+                                    Label("Save & Rename", systemImage: "plus.square.on.square")
+                                }
+                            }
                     }
                 }
             }
@@ -385,6 +439,91 @@ struct DeviceListView: View {
                 // Load stored devices when view appears
                 storedDevices = DeviceStore.shared.getAllDevices()
             }
+            .sheet(isPresented: $isRenamingDevice) {
+                if let device = deviceToRename {
+                    RenameDeviceView(
+                        deviceName: $newDeviceName,
+                        onSave: { newName in
+                            // Save with new name
+                            DeviceStore.shared.saveDevice(
+                                identifier: device.identifier,
+                                name: newName,
+                                manufacturerData: device.manufacturerData,
+                                advertisementData: device.advertisementData
+                            )
+                            
+                            // Refresh the device list
+                            storedDevices = DeviceStore.shared.getAllDevices()
+                        },
+                        onCancel: {
+                            isRenamingDevice = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+struct RenameDeviceView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @Binding var deviceName: String
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Rename Device")
+                    .font(.headline)
+                    .padding(.top)
+                
+                Text("Give this device a more personal name")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 70))
+                    .foregroundColor(.blue)
+                    .padding()
+                
+                TextField("Device Name", text: $deviceName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 40)
+                    .autocapitalization(.words)
+                
+                Text("This name will help you identify this device in the future")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                Spacer()
+                
+                Button(action: {
+                    onSave(deviceName)
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    Text("Save")
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 20)
+                .disabled(deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding()
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    onCancel()
+                    presentationMode.wrappedValue.dismiss()
+                }
+            )
         }
     }
 }
