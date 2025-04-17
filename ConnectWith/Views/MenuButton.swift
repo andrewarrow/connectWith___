@@ -14,6 +14,7 @@ struct MenuButton: View {
                 Image(systemName: iconName)
                     .font(.title)
                     .frame(width: 40)
+                    .padding(.trailing, 8)
                 
                 Text(title)
                     .font(.title3)

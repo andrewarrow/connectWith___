@@ -107,18 +107,66 @@ struct MainMenuView: View {
 
 struct FamilyCalendarView: View {
     @Environment(\.presentationMode) private var presentationMode
-    @State private var events: [CalendarEvent] = [
-        CalendarEvent(id: UUID(), title: "Family Picnic", date: Date().addingTimeInterval(86400 * 15), location: "City Park", participants: ["Mom", "Dad", "Sarah"]),
-        CalendarEvent(id: UUID(), title: "Zoo Trip", date: Date().addingTimeInterval(86400 * 45), location: "City Zoo", participants: ["Mom", "Dad", "Sarah", "Grandma"])
-    ]
+    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @EnvironmentObject private var calendarStore: CalendarStore
+    @State private var events: [CalendarEvent] = []
     @State private var showingAddEvent = false
+    @State private var showingSyncInfo = false
+    @State private var selectedEvent: CalendarEvent?
     
     var body: some View {
         NavigationView {
             VStack {
+                // Sync status bar
+                if bluetoothManager.syncInProgress {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .padding(.trailing, 5)
+                            
+                        Text("Syncing with family members...")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 5)
+                } else if let lastSyncTime = bluetoothManager.lastSyncTime {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                        
+                        Text("Last synced: \(timeAgoString(from: lastSyncTime))")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            bluetoothManager.scanAndSyncWithFamilyMembers()
+                        }) {
+                            Text("Sync Now")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 5)
+                }
+                
                 List {
                     ForEach(events) { event in
-                        EventRow(event: event)
+                        EventRow(
+                            event: event,
+                            syncCount: calendarStore.getSyncCountForEvent(id: event.id)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedEvent = event
+                            showingSyncInfo = true
+                        }
                     }
                     .onDelete(perform: removeEvents)
                 }
@@ -159,25 +207,189 @@ struct FamilyCalendarView: View {
             )
             .sheet(isPresented: $showingAddEvent) {
                 AddEventView { event in
-                    events.append(event)
+                    calendarStore.addEvent(event)
+                    refreshEvents()
                     showingAddEvent = false
                 }
+            }
+            .sheet(isPresented: $showingSyncInfo) {
+                if let event = selectedEvent {
+                    EventSyncInfoView(event: event)
+                }
+            }
+            .onAppear {
+                refreshEvents()
             }
         }
     }
     
+    func refreshEvents() {
+        events = calendarStore.getAllEvents()
+    }
+    
     func removeEvents(at offsets: IndexSet) {
-        events.remove(atOffsets: offsets)
+        for index in offsets {
+            let event = events[index]
+            calendarStore.removeEvent(id: event.id)
+        }
+        refreshEvents()
+    }
+    
+    func timeAgoString(from date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+struct EventSyncInfoView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var calendarStore: CalendarStore
+    let event: CalendarEvent
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Event Details")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(event.title)
+                            .font(.title2)
+                            .bold()
+                        
+                        HStack {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.blue)
+                            Text(event.date, style: .date)
+                        }
+                        
+                        HStack {
+                            Image(systemName: "mappin.and.ellipse")
+                                .foregroundColor(.red)
+                            Text(event.location)
+                        }
+                        
+                    }
+                    .padding(.vertical, 8)
+                }
+                
+                Section(header: Text("Sync Status")) {
+                    HStack {
+                        Text("Synced with")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(calendarStore.getSyncCountForEvent(id: event.id)) family members")
+                            .foregroundColor(.primary)
+                    }
+                }
+                
+                Section(header: Text("Change History")) {
+                    ForEach(calendarStore.getChangeHistoryForEvent(id: event.id), id: \.timestamp) { change in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: changeTypeIcon(change.changeType))
+                                    .foregroundColor(changeTypeColor(change.changeType))
+                                
+                                Text(changeTypeString(change.changeType))
+                                    .font(.headline)
+                                
+                                Spacer()
+                                
+                                Text(change.timestamp, style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Text("By: \(change.deviceName)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            
+                            if let field = change.fieldChanged {
+                                Text("Changed: \(field)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            if let oldValue = change.oldValue, let newValue = change.newValue {
+                                Text("From: \(oldValue) → To: \(newValue)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Event Details")
+            .navigationBarItems(
+                trailing: Button("Done") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            )
+        }
+    }
+    
+    private func changeTypeIcon(_ type: CalendarStore.EventChange.ChangeType) -> String {
+        switch type {
+        case .created: return "plus.circle"
+        case .updated: return "pencil.circle"
+        case .deleted: return "trash.circle"
+        case .synced: return "arrow.triangle.2.circlepath.circle"
+        }
+    }
+    
+    private func changeTypeColor(_ type: CalendarStore.EventChange.ChangeType) -> Color {
+        switch type {
+        case .created: return .green
+        case .updated: return .blue
+        case .deleted: return .red
+        case .synced: return .purple
+        }
+    }
+    
+    private func changeTypeString(_ type: CalendarStore.EventChange.ChangeType) -> String {
+        switch type {
+        case .created: return "Created"
+        case .updated: return "Updated"
+        case .deleted: return "Deleted"
+        case .synced: return "Synced"
+        }
     }
 }
 
 struct EventRow: View {
     let event: CalendarEvent
+    let syncCount: Int
+    
+    init(event: CalendarEvent, syncCount: Int = 0) {
+        self.event = event
+        self.syncCount = syncCount
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(event.title)
-                .font(.headline)
+            HStack {
+                Text(event.title)
+                    .font(.headline)
+                
+                Spacer()
+                
+                // Show sync badge
+                HStack(spacing: 2) {
+                    Image(systemName: "iphone.radiowaves.left.and.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(syncCount > 0 ? .green : .gray)
+                    
+                    Text("\(syncCount)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(syncCount > 0 ? .green : .gray)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(syncCount > 0 ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+                )
+            }
             
             HStack {
                 Image(systemName: "calendar")
@@ -193,12 +405,18 @@ struct EventRow: View {
                     .font(.subheadline)
             }
             
-            HStack {
-                Image(systemName: "person.2.fill")
-                    .foregroundColor(.green)
-                Text(event.participants.joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundColor(.gray)
+            
+            if syncCount == 0 {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                    
+                    Text("Only on this device. Not yet synced with family.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.vertical, 8)
@@ -210,7 +428,6 @@ struct AddEventView: View {
     @State private var title = ""
     @State private var date = Date().addingTimeInterval(86400 * 7) // One week from now
     @State private var location = ""
-    @State private var participants = ""
     
     var onSave: (CalendarEvent) -> Void
     
@@ -223,10 +440,6 @@ struct AddEventView: View {
                     TextField("Location", text: $location)
                 }
                 
-                Section(header: Text("Participants")) {
-                    TextField("Participants (comma separated)", text: $participants)
-                        .autocapitalization(.words)
-                }
             }
             .navigationTitle("New Family Event")
             .navigationBarItems(
@@ -234,17 +447,11 @@ struct AddEventView: View {
                     presentationMode.wrappedValue.dismiss()
                 },
                 trailing: Button("Save") {
-                    let participantsList = participants
-                        .split(separator: ",")
-                        .map { String($0).trimmingCharacters(in: .whitespaces) }
-                        .filter { !$0.isEmpty }
-                    
                     let event = CalendarEvent(
                         id: UUID(),
                         title: title,
                         date: date,
-                        location: location,
-                        participants: participantsList
+                        location: location
                     )
                     
                     onSave(event)
@@ -255,12 +462,11 @@ struct AddEventView: View {
     }
 }
 
-struct CalendarEvent: Identifiable {
+struct CalendarEvent: Identifiable, Codable {
     let id: UUID
     let title: String
     let date: Date
     let location: String
-    let participants: [String]
 }
 
 struct DeviceListView: View {

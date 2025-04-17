@@ -48,6 +48,347 @@ class DeviceStore {
     }
 }
 
+// MARK: - Calendar Event Store & Sync Manager
+class CalendarStore: ObservableObject {
+    static let shared = CalendarStore()
+    
+    // Event Sync Status Structure
+    struct EventSyncInfo {
+        let eventId: UUID
+        var syncedWithDevices: [String] // List of device identifiers that have this event
+        var lastModifiedBy: String // Device identifier of last modifier
+        var lastModifiedDate: Date
+        var createdBy: String // Original creator device identifier
+        var createdDate: Date
+        var changeHistory: [EventChange]
+    }
+    
+    // Change tracking for history and conflict resolution
+    struct EventChange: Codable {
+        let deviceId: String
+        let deviceName: String
+        let timestamp: Date
+        let changeType: ChangeType
+        let fieldChanged: String?
+        let oldValue: String?
+        let newValue: String?
+        
+        enum ChangeType: String, Codable {
+            case created
+            case updated
+            case deleted
+            case synced
+        }
+    }
+    
+    // Main event storage
+    @Published private var events: [UUID: CalendarEvent] = [:]
+    @Published private var syncInfo: [UUID: EventSyncInfo] = [:]
+    
+    // This device's identifier
+    private var currentDeviceId: String {
+        UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    }
+    
+    private var currentDeviceName: String {
+        UserDefaults.standard.string(forKey: "DeviceCustomName") ?? UIDevice.current.name
+    }
+    
+    init() {
+        // Add some sample events for testing
+        loadSampleEvents()
+    }
+    
+    private func loadSampleEvents() {
+        // Only load if we have no events yet
+        if events.isEmpty {
+            let event1 = CalendarEvent(
+                id: UUID(),
+                title: "Family Picnic",
+                date: Date().addingTimeInterval(86400 * 15),
+                location: "City Park"
+            )
+            
+            let event2 = CalendarEvent(
+                id: UUID(),
+                title: "Zoo Trip",
+                date: Date().addingTimeInterval(86400 * 45),
+                location: "City Zoo"
+            )
+            
+            // Add events to store
+            addEvent(event1)
+            addEvent(event2)
+            
+            // Simulate that one event has been synced with 2 family members
+            if var syncInfo = self.syncInfo[event1.id] {
+                syncInfo.syncedWithDevices = ["device-1", "device-2"]
+                syncInfo.changeHistory.append(
+                    EventChange(
+                        deviceId: "device-1",
+                        deviceName: "Mom's iPhone",
+                        timestamp: Date().addingTimeInterval(-3600),
+                        changeType: .synced,
+                        fieldChanged: nil,
+                        oldValue: nil,
+                        newValue: nil
+                    )
+                )
+                syncInfo.changeHistory.append(
+                    EventChange(
+                        deviceId: "device-2",
+                        deviceName: "Dad's iPhone",
+                        timestamp: Date().addingTimeInterval(-1800),
+                        changeType: .synced,
+                        fieldChanged: nil,
+                        oldValue: nil,
+                        newValue: nil
+                    )
+                )
+                self.syncInfo[event1.id] = syncInfo
+            }
+        }
+    }
+    
+    // MARK: - Event Management
+    
+    func addEvent(_ event: CalendarEvent) {
+        events[event.id] = event
+        
+        // Create sync info for new event
+        let newSyncInfo = EventSyncInfo(
+            eventId: event.id,
+            syncedWithDevices: [], // No other devices have this yet
+            lastModifiedBy: currentDeviceId,
+            lastModifiedDate: Date(),
+            createdBy: currentDeviceId,
+            createdDate: Date(),
+            changeHistory: [
+                EventChange(
+                    deviceId: currentDeviceId,
+                    deviceName: currentDeviceName,
+                    timestamp: Date(),
+                    changeType: .created,
+                    fieldChanged: nil,
+                    oldValue: nil,
+                    newValue: nil
+                )
+            ]
+        )
+        
+        syncInfo[event.id] = newSyncInfo
+    }
+    
+    func updateEvent(_ event: CalendarEvent, changedField: String, oldValue: String, newValue: String) {
+        events[event.id] = event
+        
+        // Update sync info
+        if var info = syncInfo[event.id] {
+            info.lastModifiedBy = currentDeviceId
+            info.lastModifiedDate = Date()
+            
+            // Add to change history
+            info.changeHistory.append(
+                EventChange(
+                    deviceId: currentDeviceId,
+                    deviceName: currentDeviceName,
+                    timestamp: Date(),
+                    changeType: .updated,
+                    fieldChanged: changedField,
+                    oldValue: oldValue,
+                    newValue: newValue
+                )
+            )
+            
+            syncInfo[event.id] = info
+        }
+    }
+    
+    func removeEvent(id: UUID) {
+        events.removeValue(forKey: id)
+        
+        // Update sync info for deletion tracking
+        if var info = syncInfo[id] {
+            info.lastModifiedBy = currentDeviceId
+            info.lastModifiedDate = Date()
+            
+            // Add to change history
+            info.changeHistory.append(
+                EventChange(
+                    deviceId: currentDeviceId,
+                    deviceName: currentDeviceName,
+                    timestamp: Date(),
+                    changeType: .deleted,
+                    fieldChanged: nil,
+                    oldValue: nil,
+                    newValue: nil
+                )
+            )
+            
+            // Keep the sync info for deleted events to track deletion across devices
+            syncInfo[id] = info
+        }
+    }
+    
+    func getAllEvents() -> [CalendarEvent] {
+        return Array(events.values).sorted { $0.date < $1.date }
+    }
+    
+    func getEvent(id: UUID) -> CalendarEvent? {
+        return events[id]
+    }
+    
+    // MARK: - Sync Management
+    
+    func getSyncCountForEvent(id: UUID) -> Int {
+        return syncInfo[id]?.syncedWithDevices.count ?? 0
+    }
+    
+    func getChangeHistoryForEvent(id: UUID) -> [EventChange] {
+        return syncInfo[id]?.changeHistory ?? []
+    }
+    
+    // Methods for Bluetooth sync
+    func prepareEventsForSync() -> Data? {
+        // Convert events and their sync info to Data for transmission
+        let syncPackage = SyncPackage(
+            deviceId: currentDeviceId,
+            deviceName: currentDeviceName,
+            events: Array(events.values),
+            syncInfo: syncInfo
+        )
+        
+        return try? JSONEncoder().encode(syncPackage)
+    }
+    
+    func processSyncedEvents(data: Data) -> Int {
+        guard let receivedPackage = try? JSONDecoder().decode(SyncPackage.self, from: data) else {
+            return 0
+        }
+        
+        var syncedCount = 0
+        
+        // Process each received event
+        for receivedEvent in receivedPackage.events {
+            if let existingEvent = events[receivedEvent.id] {
+                // Event exists - check which is newer based on sync info
+                if let existingInfo = syncInfo[receivedEvent.id],
+                   let receivedInfo = receivedPackage.syncInfo[receivedEvent.id] {
+                    
+                    if receivedInfo.lastModifiedDate > existingInfo.lastModifiedDate {
+                        // Received event is newer, update our copy
+                        events[receivedEvent.id] = receivedEvent
+                        
+                        // Merge histories and update sync info
+                        var updatedInfo = receivedInfo
+                        updatedInfo.syncedWithDevices = Array(Set(existingInfo.syncedWithDevices + receivedInfo.syncedWithDevices + [currentDeviceId, receivedPackage.deviceId]))
+                        
+                        // Add this sync to change history
+                        updatedInfo.changeHistory.append(contentsOf: existingInfo.changeHistory.filter { change in
+                            !receivedInfo.changeHistory.contains(where: { $0.deviceId == change.deviceId && $0.timestamp == change.timestamp })
+                        })
+                        
+                        updatedInfo.changeHistory.append(
+                            EventChange(
+                                deviceId: currentDeviceId,
+                                deviceName: currentDeviceName,
+                                timestamp: Date(),
+                                changeType: .synced,
+                                fieldChanged: nil,
+                                oldValue: nil,
+                                newValue: nil
+                            )
+                        )
+                        
+                        syncInfo[receivedEvent.id] = updatedInfo
+                        syncedCount += 1
+                    } else {
+                        // Our event is newer, but still update the sync info
+                        var updatedInfo = existingInfo
+                        updatedInfo.syncedWithDevices = Array(Set(existingInfo.syncedWithDevices + receivedInfo.syncedWithDevices + [currentDeviceId, receivedPackage.deviceId]))
+                        
+                        // Add histories from the other device that we don't have
+                        updatedInfo.changeHistory.append(contentsOf: receivedInfo.changeHistory.filter { change in
+                            !existingInfo.changeHistory.contains(where: { $0.deviceId == change.deviceId && $0.timestamp == change.timestamp })
+                        })
+                        
+                        syncInfo[receivedEvent.id] = updatedInfo
+                        syncedCount += 1
+                    }
+                }
+            } else {
+                // New event - add it
+                events[receivedEvent.id] = receivedEvent
+                
+                if var receivedInfo = receivedPackage.syncInfo[receivedEvent.id] {
+                    // Add this device to the synced devices list
+                    receivedInfo.syncedWithDevices = Array(Set(receivedInfo.syncedWithDevices + [currentDeviceId]))
+                    
+                    // Add a sync record to the history
+                    receivedInfo.changeHistory.append(
+                        EventChange(
+                            deviceId: currentDeviceId,
+                            deviceName: currentDeviceName,
+                            timestamp: Date(),
+                            changeType: .synced,
+                            fieldChanged: nil,
+                            oldValue: nil,
+                            newValue: nil
+                        )
+                    )
+                    
+                    syncInfo[receivedEvent.id] = receivedInfo
+                    syncedCount += 1
+                }
+            }
+        }
+        
+        // Process deleted events from the other device
+        for (eventId, receivedInfo) in receivedPackage.syncInfo {
+            // Check if this is a deletion event that we don't have
+            let isDeletedOnOtherDevice = receivedInfo.changeHistory.contains(where: { $0.changeType == .deleted })
+            let eventExistsLocally = events[eventId] != nil
+            
+            if isDeletedOnOtherDevice && eventExistsLocally {
+                // Event was deleted on other device but we still have it
+                // Apply deletion based on last modified timestamp
+                if let localInfo = syncInfo[eventId], 
+                   receivedInfo.lastModifiedDate > localInfo.lastModifiedDate {
+                    events.removeValue(forKey: eventId)
+                    
+                    // Update our sync info to reflect deletion
+                    var updatedInfo = receivedInfo
+                    updatedInfo.syncedWithDevices = Array(Set(localInfo.syncedWithDevices + receivedInfo.syncedWithDevices + [currentDeviceId]))
+                    
+                    updatedInfo.changeHistory.append(contentsOf: localInfo.changeHistory.filter { change in
+                        !receivedInfo.changeHistory.contains(where: { $0.deviceId == change.deviceId && $0.timestamp == change.timestamp })
+                    })
+                    
+                    syncInfo[eventId] = updatedInfo
+                    syncedCount += 1
+                }
+            }
+        }
+        
+        return syncedCount
+    }
+    
+    // Structure for sending sync data
+    struct SyncPackage: Codable {
+        let deviceId: String
+        let deviceName: String
+        let events: [CalendarEvent]
+        let syncInfo: [UUID: EventSyncInfo]
+    }
+}
+
+// Make EventSyncInfo Codable for sync
+extension CalendarStore.EventSyncInfo: Codable {
+    enum CodingKeys: String, CodingKey {
+        case eventId, syncedWithDevices, lastModifiedBy, lastModifiedDate, createdBy, createdDate, changeHistory
+    }
+}
+
 // MARK: - Onboarding View
 
 struct OnboardingView: View {
@@ -403,6 +744,7 @@ struct NameDeviceView: View {
 struct TwelveXApp: App {
     @State private var isShowingSplash = true
     @StateObject private var bluetoothManager = BluetoothManager()
+    @StateObject private var calendarStore = CalendarStore.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var body: some Scene {
@@ -417,22 +759,33 @@ struct TwelveXApp: App {
                 }
             }
             .environmentObject(bluetoothManager)
+            .environmentObject(calendarStore)
         }
     }
 }
 
-class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralManagerDelegate {
+class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralManagerDelegate, CBPeripheralDelegate {
     static let serviceUUID = CBUUID(string: "4514d666-d6c9-49cb-bc31-dc6dfa28bd58")
+    static let calendarCharacteristicUUID = CBUUID(string: "97d52a22-9292-48c6-a89f-8a71d89c5e9b")
     
     private var centralManager: CBCentralManager?
     private var peripheralManager: CBPeripheralManager?
     private let deviceStore = DeviceStore.shared
+    private let calendarStore = CalendarStore.shared
+    
+    private var calendarService: CBMutableService?
+    private var calendarCharacteristic: CBMutableCharacteristic?
+    private var connectedPeripherals: [CBPeripheral] = []
     
     @Published var isScanning = false
     @Published var permissionGranted = false
     @Published var nearbyDevices: [(peripheral: CBPeripheral, advertisementData: [String: Any])] = []
     @Published var scanningProgress: Double = 0.0
     @Published var showPermissionAlert = false
+    @Published var syncInProgress = false
+    @Published var lastSyncTime: Date?
+    @Published var lastSyncDeviceName: String?
+    @Published var syncedEventsCount = 0
     
     override init() {
         super.init()
@@ -534,11 +887,26 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             return
         }
         
+        // Create calendar characteristic
+        calendarCharacteristic = CBMutableCharacteristic(
+            type: BluetoothManager.calendarCharacteristicUUID,
+            properties: [.read, .write, .notify],
+            value: nil,
+            permissions: [.readable, .writeable]
+        )
+        
         // Create a service with our UUID
-        let service = CBMutableService(type: BluetoothManager.serviceUUID, primary: true)
+        calendarService = CBMutableService(type: BluetoothManager.serviceUUID, primary: true)
+        
+        // Add the calendar characteristic to the service
+        if let calendarCharacteristic = calendarCharacteristic {
+            calendarService?.characteristics = [calendarCharacteristic]
+        }
         
         // Add the service to the peripheral manager
-        peripheralManager?.add(service)
+        if let calendarService = calendarService {
+            peripheralManager?.add(calendarService)
+        }
         
         // Get personalized device name from settings bundle if available
         var deviceName = UIDevice.current.name
@@ -559,8 +927,8 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         // Start advertising with device name and our service UUID
         let advertisementData: [String: Any] = [
             CBAdvertisementDataServiceUUIDsKey: [BluetoothManager.serviceUUID],
-            CBAdvertisementDataLocalNameKey: deviceName
-            // Removed CBAdvertisementDataIsConnectable as it's causing a warning
+            CBAdvertisementDataLocalNameKey: deviceName,
+            CBAdvertisementDataIsConnectable: true
         ]
         
         // Print what we're advertising
@@ -571,6 +939,88 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         // Confirm advertising started
         print("Advertising started with name: \(deviceName)")
+    }
+    
+    // MARK: - Calendar Sync Methods
+    
+    func setupBackgroundSync() {
+        // Schedule background scanning to periodically look for family members
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // Only scan if we're not already scanning
+            if !self.isScanning && self.permissionGranted {
+                print("Starting background scan for family members...")
+                self.scanAndSyncWithFamilyMembers()
+            }
+        }
+    }
+    
+    func scanAndSyncWithFamilyMembers() {
+        // Only start if we're not already scanning
+        guard !isScanning && permissionGranted else { return }
+        
+        // Set scanning state
+        isScanning = true
+        syncInProgress = true
+        
+        // Start scanning for our specific service UUID
+        let scanOptions: [String: Any] = [
+            CBCentralManagerScanOptionAllowDuplicatesKey: false
+        ]
+        
+        centralManager?.scanForPeripherals(withServices: [BluetoothManager.serviceUUID], options: scanOptions)
+        
+        // Auto-stop scanning after 30 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self = self else { return }
+            self.centralManager?.stopScan()
+            self.isScanning = false
+            
+            // If we found any devices, connect to them
+            if !self.nearbyDevices.isEmpty {
+                for device in self.nearbyDevices {
+                    // Only connect to known family members
+                    if DeviceStore.shared.getDevice(identifier: device.peripheral.identifier.uuidString) != nil {
+                        self.connectToDevice(device.peripheral)
+                    }
+                }
+            } else {
+                // No devices found, end sync
+                self.syncInProgress = false
+            }
+        }
+    }
+    
+    func connectToDevice(_ peripheral: CBPeripheral) {
+        peripheral.delegate = self
+        centralManager?.connect(peripheral, options: nil)
+    }
+    
+    // MARK: - Calendar Data Transfer
+    
+    private func sendCalendarData(to peripheral: CBPeripheral) {
+        // Find the calendar characteristic
+        guard let services = peripheral.services else { return }
+        
+        for service in services {
+            if service.uuid == BluetoothManager.serviceUUID {
+                peripheral.discoverCharacteristics([BluetoothManager.calendarCharacteristicUUID], for: service)
+            }
+        }
+    }
+    
+    private func syncCalendarData() {
+        // Get calendar data to send
+        guard let calendarData = calendarStore.prepareEventsForSync() else { return }
+        
+        // Update the characteristic value
+        calendarCharacteristic?.value = calendarData
+        
+        // Notify subscribers that the value has changed
+        if let calendarCharacteristic = calendarCharacteristic {
+            peripheralManager?.updateValue(calendarData, for: calendarCharacteristic, onSubscribedCentrals: nil)
+        }
     }
     
     func stopAdvertising() {
@@ -594,6 +1044,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             } else {
                 permissionGranted = true
                 startAdvertising() // Start advertising when BT is powered on
+                setupBackgroundSync() // Setup background sync timer
             }
         case .unauthorized:
             permissionGranted = false
@@ -625,6 +1076,106 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         }
     }
     
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        print("Connected to peripheral: \(peripheral.identifier)")
+        
+        // Add to connected peripherals list
+        if !connectedPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+            connectedPeripherals.append(peripheral)
+        }
+        
+        // Discover services
+        peripheral.discoverServices([BluetoothManager.serviceUUID])
+    }
+    
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        print("Failed to connect to peripheral: \(peripheral.identifier), error: \(error?.localizedDescription ?? "unknown")")
+        
+        // Check if we've connected to all peripherals, if so, end sync
+        checkSyncComplete()
+    }
+    
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        print("Disconnected from peripheral: \(peripheral.identifier)")
+        
+        // Remove from connected peripherals
+        connectedPeripherals.removeAll(where: { $0.identifier == peripheral.identifier })
+        
+        // Check if we've disconnected from all peripherals, if so, end sync
+        checkSyncComplete()
+    }
+    
+    private func checkSyncComplete() {
+        if connectedPeripherals.isEmpty {
+            syncInProgress = false
+        }
+    }
+    
+    // MARK: - CBPeripheralDelegate
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard let services = peripheral.services else { return }
+        
+        for service in services {
+            if service.uuid == BluetoothManager.serviceUUID {
+                // Discover the calendar characteristic
+                peripheral.discoverCharacteristics([BluetoothManager.calendarCharacteristicUUID], for: service)
+            }
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard let characteristics = service.characteristics else { return }
+        
+        for characteristic in characteristics {
+            if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+                // Subscribe to notifications for the characteristic
+                peripheral.setNotifyValue(true, for: characteristic)
+                
+                // Read the current value 
+                peripheral.readValue(for: characteristic)
+                
+                // Also send our calendar data to the peripheral
+                if let calendarData = calendarStore.prepareEventsForSync() {
+                    peripheral.writeValue(calendarData, for: characteristic, type: .withResponse)
+                }
+            }
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+            if let data = characteristic.value {
+                // Process received calendar data
+                let syncCount = calendarStore.processSyncedEvents(data: data)
+                
+                // Update sync status
+                syncedEventsCount += syncCount
+                lastSyncTime = Date()
+                
+                // Get the device name
+                if let storedDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString) {
+                    lastSyncDeviceName = storedDevice.name
+                } else if let name = peripheral.name {
+                    lastSyncDeviceName = name
+                } else {
+                    lastSyncDeviceName = "Unknown Device"
+                }
+                
+                print("Synced \(syncCount) events with \(lastSyncDeviceName ?? "Unknown Device")")
+            }
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+            print("Calendar data sent to \(peripheral.identifier)")
+            
+            // Disconnect after successful write
+            centralManager?.cancelPeripheralConnection(peripheral)
+        }
+    }
+    
     // MARK: - CBPeripheralManagerDelegate
     
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
@@ -637,5 +1188,45 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         default:
             permissionGranted = false
         }
+    }
+    
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        if request.characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+            // Prepare calendar data to send
+            if let calendarData = calendarStore.prepareEventsForSync() {
+                // Set the value on the request
+                request.value = calendarData
+                
+                // Respond to the request
+                peripheral.respond(to: request, withResult: .success)
+            } else {
+                peripheral.respond(to: request, withResult: .unlikelyError)
+            }
+        }
+    }
+    
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        for request in requests {
+            if request.characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+                if let data = request.value {
+                    // Process received calendar data
+                    let syncCount = calendarStore.processSyncedEvents(data: data)
+                    
+                    // Update sync status
+                    syncedEventsCount += syncCount
+                    lastSyncTime = Date()
+                    
+                    print("Processed \(syncCount) events from peripheral write")
+                }
+            }
+        }
+        
+        // Respond to all requests with success
+        peripheral.respond(to: requests[0], withResult: .success)
+    }
+    
+    func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        // Notify subscribers with updated calendar data
+        syncCalendarData()
     }
 }
