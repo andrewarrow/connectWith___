@@ -365,82 +365,220 @@ struct DeviceListView: View {
     @Environment(\.presentationMode) private var presentationMode
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @State private var storedDevices: [DeviceStore.StoredDevice] = []
-    @State private var deviceToRename: DeviceStore.StoredDevice? = nil
+    @State private var deviceToRename: (DeviceStore.StoredDevice?, CBPeripheral?, [String: Any]?) = (nil, nil, nil)
     @State private var isRenamingDevice = false
     @State private var newDeviceName = ""
+    @State private var selectedTab = 0 // 0 = Family Members, 1 = Nearby Devices
+    @State private var showingSuccessAlert = false
+    @State private var recentlyAddedName = ""
     
     var body: some View {
         NavigationView {
-            List {
-                if storedDevices.isEmpty && bluetoothManager.nearbyDevices.isEmpty {
-                    Text("No devices found")
-                        .foregroundColor(.gray)
-                } else {
-                    // Show devices from memory store
-                    ForEach(storedDevices, id: \.identifier) { device in
-                        StoredDeviceRow(device: device)
-                            .contextMenu {
-                                Button(action: {
-                                    deviceToRename = device
-                                    newDeviceName = device.name
-                                    isRenamingDevice = true
-                                }) {
-                                    Label("Rename", systemImage: "pencil")
+            VStack {
+                // Tab selector
+                Picker("Device View", selection: $selectedTab) {
+                    Text("Family Members").tag(0)
+                    Text("Nearby Devices").tag(1)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
+                
+                if selectedTab == 0 {
+                    // FAMILY MEMBERS TAB
+                    if storedDevices.isEmpty {
+                        VStack(spacing: 20) {
+                            Spacer()
+                            
+                            Image(systemName: "person.2.slash")
+                                .font(.system(size: 60))
+                                .foregroundColor(.gray)
+                            
+                            Text("No Family Members Saved")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.gray)
+                            
+                            Text("Tap 'Scan' to find nearby devices")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                            
+                            Button(action: {
+                                selectedTab = 1 // Switch to nearby devices tab
+                                bluetoothManager.startScanning()
+                            }) {
+                                HStack {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                    Text("Scan for Devices")
                                 }
+                                .padding()
+                                .foregroundColor(.white)
+                                .background(Color.blue)
+                                .cornerRadius(10)
                             }
-                    }
-                    
-                    // Also show current scan results
-                    ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
-                        let device = bluetoothManager.nearbyDevices[index]
-                        DeviceRowView(peripheral: device.peripheral, advertisementData: device.advertisementData)
-                            .contextMenu {
-                                Button(action: {
-                                    // Get device name
-                                    let deviceName: String
-                                    if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
-                                        deviceName = localName
-                                    } else if let name = device.peripheral.name, !name.isEmpty {
-                                        deviceName = name
-                                    } else {
-                                        deviceName = "Unknown Device"
+                            .padding(.top)
+                            
+                            Spacer()
+                        }
+                        .padding()
+                    } else {
+                        List {
+                            ForEach(storedDevices, id: \.identifier) { device in
+                                StoredDeviceRow(device: device)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        deviceToRename = (device, nil, nil)
+                                        newDeviceName = device.name
+                                        isRenamingDevice = true
                                     }
-                                    
-                                    // Create temporary StoredDevice for renaming
-                                    deviceToRename = DeviceStore.StoredDevice(
-                                        identifier: device.peripheral.identifier.uuidString,
-                                        name: deviceName,
-                                        lastSeen: Date(),
-                                        manufacturerData: device.advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
-                                        advertisementData: nil
-                                    )
-                                    newDeviceName = deviceName
-                                    isRenamingDevice = true
-                                }) {
-                                    Label("Save & Rename", systemImage: "plus.square.on.square")
+                                    .contextMenu {
+                                        Button(action: {
+                                            deviceToRename = (device, nil, nil)
+                                            newDeviceName = device.name
+                                            isRenamingDevice = true
+                                        }) {
+                                            Label("Rename", systemImage: "pencil")
+                                        }
+                                        
+                                        Button(role: .destructive, action: {
+                                            // Remove the device from the local database
+                                            // In a real app, we'd use a proper delete method
+                                            // For now, we'll just reload the list without this device
+                                            storedDevices = storedDevices.filter { $0.identifier != device.identifier }
+                                        }) {
+                                            Label("Remove", systemImage: "trash")
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                } else {
+                    // NEARBY DEVICES TAB
+                    if bluetoothManager.isScanning {
+                        VStack {
+                            // Scanning progress indicator
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 10)
+                                    .frame(width: 120, height: 120)
+                                
+                                Circle()
+                                    .trim(from: 0, to: bluetoothManager.scanningProgress)
+                                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                                    .frame(width: 120, height: 120)
+                                    .rotationEffect(.degrees(-90))
+                                    .animation(.linear, value: bluetoothManager.scanningProgress)
+                                
+                                Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.blue)
+                            }
+                            .padding()
+                            
+                            Text("Scanning for nearby devices...")
+                                .font(.headline)
+                                .foregroundColor(.blue)
+                            
+                            if bluetoothManager.nearbyDevices.isEmpty {
+                                Text("No devices found yet")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .padding()
+                            }
+                        }
+                        .padding()
+                        
+                        if !bluetoothManager.nearbyDevices.isEmpty {
+                            List {
+                                ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
+                                    let device = bluetoothManager.nearbyDevices[index]
+                                    NearbyDeviceRow(peripheral: device.peripheral, advertisementData: device.advertisementData)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            handleNearbyDeviceSelection(device)
+                                        }
                                 }
                             }
+                        }
+                    } else if bluetoothManager.nearbyDevices.isEmpty {
+                        VStack(spacing: 20) {
+                            Spacer()
+                            
+                            Image(systemName: "wifi.slash")
+                                .font(.system(size: 60))
+                                .foregroundColor(.gray)
+                            
+                            Text("No Devices Found")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.gray)
+                            
+                            Text("Tap the Scan button to search for nearby devices")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                            
+                            Button(action: {
+                                bluetoothManager.startScanning()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Scan Again")
+                                }
+                                .padding()
+                                .foregroundColor(.white)
+                                .background(Color.blue)
+                                .cornerRadius(10)
+                            }
+                            .padding(.top)
+                            
+                            Spacer()
+                        }
+                        .padding()
+                    } else {
+                        List {
+                            ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
+                                let device = bluetoothManager.nearbyDevices[index]
+                                NearbyDeviceRow(peripheral: device.peripheral, advertisementData: device.advertisementData)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        handleNearbyDeviceSelection(device)
+                                    }
+                            }
+                        }
                     }
                 }
             }
-            .navigationTitle("Nearby Devices")
+            .navigationTitle(selectedTab == 0 ? "Family Members" : "Nearby Devices")
             .navigationBarItems(
                 leading: Button("Back") {
                     presentationMode.wrappedValue.dismiss()
                 },
-                trailing: Button(action: {
-                    bluetoothManager.startScanning()
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.blue)
+                trailing: HStack {
+                    if selectedTab == 1 {
+                        Button(action: {
+                            bluetoothManager.startScanning()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(.blue)
+                        }
+                    }
                 }
             )
             .onAppear {
                 // Load stored devices when view appears
                 storedDevices = DeviceStore.shared.getAllDevices()
+                
+                // Auto-start scanning on the Nearby Devices tab
+                if selectedTab == 1 && !bluetoothManager.isScanning && bluetoothManager.permissionGranted {
+                    bluetoothManager.startScanning()
+                }
             }
             .sheet(isPresented: $isRenamingDevice) {
-                if let device = deviceToRename {
+                if let device = deviceToRename.0 {
+                    // Renaming an existing family member
                     RenameDeviceView(
                         deviceName: $newDeviceName,
                         onSave: { newName in
@@ -454,14 +592,137 @@ struct DeviceListView: View {
                             
                             // Refresh the device list
                             storedDevices = DeviceStore.shared.getAllDevices()
+                            recentlyAddedName = newName
+                            showingSuccessAlert = true
                         },
                         onCancel: {
+                            deviceToRename = (nil, nil, nil)
+                            isRenamingDevice = false
+                        }
+                    )
+                } else if let peripheral = deviceToRename.1, let advertisementData = deviceToRename.2 {
+                    // Adding a new device from nearby devices
+                    RenameDeviceView(
+                        deviceName: $newDeviceName,
+                        onSave: { newName in
+                            // Get manufacturer data if available
+                            let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+                            
+                            // Create a serialized version of service UUIDs if available
+                            var serviceData: Data? = nil
+                            if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+                                let uuidStrings = serviceUUIDs.map { $0.uuidString }
+                                serviceData = try? JSONSerialization.data(withJSONObject: uuidStrings)
+                            }
+                            
+                            // Save to our in-memory store
+                            DeviceStore.shared.saveDevice(
+                                identifier: peripheral.identifier.uuidString,
+                                name: newName,
+                                manufacturerData: manufacturerData,
+                                advertisementData: serviceData
+                            )
+                            
+                            // Refresh the device list
+                            storedDevices = DeviceStore.shared.getAllDevices()
+                            
+                            // Switch to the Family Members tab
+                            selectedTab = 0
+                            recentlyAddedName = newName
+                            showingSuccessAlert = true
+                        },
+                        onCancel: {
+                            deviceToRename = (nil, nil, nil)
                             isRenamingDevice = false
                         }
                     )
                 }
             }
+            .alert("Family Member Added", isPresented: $showingSuccessAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("\(recentlyAddedName) has been saved to your Family Members.")
+            }
         }
+    }
+    
+    private func handleNearbyDeviceSelection(_ device: (peripheral: CBPeripheral, advertisementData: [String: Any])) {
+        // Get the best name for the device
+        let deviceName: String
+        if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+            deviceName = localName
+        } else if let name = device.peripheral.name, !name.isEmpty {
+            deviceName = name
+        } else {
+            deviceName = "Family Member"
+        }
+        
+        // Set up for renaming
+        deviceToRename = (nil, device.peripheral, device.advertisementData)
+        newDeviceName = deviceName
+        isRenamingDevice = true
+    }
+}
+
+struct NearbyDeviceRow: View {
+    let peripheral: CBPeripheral
+    let advertisementData: [String: Any]
+    
+    var deviceName: String {
+        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+            return localName
+        } else if let name = peripheral.name, !name.isEmpty {
+            return name
+        } else {
+            return "Unknown Device"
+        }
+    }
+    
+    // Check if this device is already in our saved list
+    var isSaved: Bool {
+        return DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString) != nil
+    }
+    
+    var body: some View {
+        HStack {
+            Image(systemName: isSaved ? "iphone.circle.fill" : "iphone")
+                .font(.system(size: 30))
+                .foregroundColor(isSaved ? .green : .blue)
+                .frame(width: 40)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(deviceName)
+                        .font(.headline)
+                    
+                    if isSaved {
+                        Text("Saved")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .cornerRadius(10)
+                    }
+                }
+                
+                Text(peripheral.identifier.uuidString.prefix(8) + "...")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                Text("Tap to add to Family Members")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .opacity(isSaved ? 0 : 1)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.gray)
+        }
+        .padding(.vertical, 8)
+        .opacity(isSaved ? 0.7 : 1)
     }
 }
 

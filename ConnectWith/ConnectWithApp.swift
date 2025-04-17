@@ -252,21 +252,45 @@ struct OnboardingDeviceRow: View {
         }
     }
     
+    // Check if this device is already in our saved list
+    var isSaved: Bool {
+        return DeviceStore.shared.getDevice(identifier: device.peripheral.identifier.uuidString) != nil
+    }
+    
     var body: some View {
         Button(action: onSelect) {
             HStack {
-                Image(systemName: "iphone")
+                Image(systemName: isSaved ? "iphone.circle.fill" : "iphone")
                     .font(.system(size: 30))
-                    .foregroundColor(.blue)
+                    .foregroundColor(isSaved ? .green : .blue)
                     .frame(width: 40)
                 
-                VStack(alignment: .leading) {
-                    Text(deviceName)
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(deviceName)
+                            .font(.headline)
+                        
+                        if isSaved {
+                            Text("Saved")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.green)
+                                .cornerRadius(10)
+                        }
+                    }
                     
-                    Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                    if deviceName != "Unknown Device" {
+                        Text("Tap to rename and save")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .opacity(isSaved ? 0 : 1)
+                    } else {
+                        Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
                 }
                 
                 Spacer()
@@ -280,6 +304,7 @@ struct OnboardingDeviceRow: View {
             .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
+        .opacity(isSaved ? 0.7 : 1)
     }
 }
 
