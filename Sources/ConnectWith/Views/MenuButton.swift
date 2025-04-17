@@ -4,12 +4,11 @@ struct MenuButton: View {
     let title: String
     let iconName: String
     let color: Color
+    var action: () -> Void = {}
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        Button(action: {
-            // Action for button
-            print("\(title) button tapped")
-        }) {
+        Button(action: action) {
             HStack {
                 Image(systemName: iconName)
                     .font(.title)
@@ -22,10 +21,10 @@ struct MenuButton: View {
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
+                    .foregroundColor(colorScheme == .dark ? .gray.opacity(0.7) : .gray)
             }
             .padding()
-            .background(color.opacity(0.2))
+            .background(colorScheme == .dark ? color.opacity(0.3) : color.opacity(0.15))
             .cornerRadius(10)
             .foregroundColor(color)
         }

@@ -265,23 +265,34 @@ struct OnboardingDeviceRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack {
-                Image(systemName: isSaved ? "iphone.circle.fill" : "iphone")
-                    .font(.system(size: 30))
-                    .foregroundColor(isSaved ? .green : .blue)
-                    .frame(width: 40)
+                // Device icon with better contrast
+                ZStack {
+                    Circle()
+                        .fill(isSaved ? Color.green : Color.blue)
+                        .frame(width: 50, height: 50)
+                    
+                    Image(systemName: "iphone")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                }
+                .padding(.trailing, 5)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
+                        // Use high-contrast colors for device name
                         Text(deviceName)
                             .font(.headline)
+                            .foregroundColor(.black) // Always black for light mode
                         
                         if isSaved {
+                            // Improved contrast for "Saved" badge
                             Text("Saved")
                                 .font(.caption)
-                                .foregroundColor(.white)
+                                .fontWeight(.medium)
                                 .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.green)
+                                .padding(.vertical, 3)
+                                .background(Color(red: 0, green: 0.6, blue: 0)) // Darker green
+                                .foregroundColor(.white)
                                 .cornerRadius(10)
                         }
                     }
@@ -292,19 +303,20 @@ struct OnboardingDeviceRow: View {
                             .foregroundColor(.blue)
                             .opacity(isSaved ? 0 : 1)
                     } else {
+                        // Higher contrast for ID text
                         Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
                             .font(.caption)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Color.black.opacity(0.6)) // Darker gray for better contrast
                     }
                 }
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color.black.opacity(0.5)) // Darker for better contrast
             }
             .padding()
-            .background(Color.white)
+            .background(Color(red: 0.9, green: 0.9, blue: 0.9)) // Slightly darker gray background
             .cornerRadius(10)
             .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
         }

@@ -2,10 +2,11 @@ import SwiftUI
 
 struct SplashScreen: View {
     @Binding var isShowingSplash: Bool
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         ZStack {
-            Color.blue.opacity(0.7)
+            (colorScheme == .dark ? Color.blue.opacity(0.6) : Color.blue.opacity(0.8))
                 .ignoresSafeArea()
             
             VStack {

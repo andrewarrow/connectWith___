@@ -197,6 +197,7 @@ struct OnboardingView: View {
 struct OnboardingDeviceRow: View {
     let device: (peripheral: CBPeripheral, advertisementData: [String: Any])
     let onSelect: () -> Void
+    @Environment(\.colorScheme) var colorScheme
     
     var deviceName: String {
         if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
@@ -211,29 +212,37 @@ struct OnboardingDeviceRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack {
-                Image(systemName: "iphone")
-                    .font(.system(size: 30))
-                    .foregroundColor(.blue)
-                    .frame(width: 40)
+                // Icon with better contrast background
+                ZStack {
+                    Circle()
+                        .fill(colorScheme == .dark ? Color.gray.opacity(0.3) : Color.blue.opacity(0.1))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: "iphone")
+                        .font(.system(size: 22))
+                        .foregroundColor(colorScheme == .dark ? .cyan : .blue)
+                }
+                .padding(.trailing, 8)
                 
                 VStack(alignment: .leading) {
                     Text(deviceName)
                         .font(.headline)
+                        .foregroundColor(.primary) // System primary color
                     
                     Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary) // System secondary color
                 }
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary) // System secondary color
             }
             .padding()
-            .background(Color.white)
+            .background(colorScheme == .dark ? Color.gray.opacity(0.2) : Color.white)
             .cornerRadius(10)
-            .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+            .shadow(color: colorScheme == .dark ? Color.clear : Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
     }
