@@ -44,7 +44,7 @@ class DeviceStore {
 }
 
 @main
-struct ConnectWithApp: App {
+struct TwelveXApp: App {
     @State private var isShowingSplash = true
     @StateObject private var bluetoothManager = BluetoothManager()
     

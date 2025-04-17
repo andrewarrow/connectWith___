@@ -7,34 +7,47 @@ struct SplashScreen: View {
     
     var body: some View {
         ZStack {
-            Color.blue.opacity(0.7)
+            Color.purple.opacity(0.8)
                 .ignoresSafeArea()
             
-            VStack {
-                Text("12x")
-                    .font(.system(size: 42, weight: .bold))
+            VStack(spacing: 20) {
+                Text("12×")
+                    .font(.system(size: 72, weight: .bold))
                     .foregroundColor(.white)
-                    .padding()
                 
-                Image(systemName: "link.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 100, height: 100)
+                Text("Family Outings")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                
+                VStack(spacing: 8) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 26))
+                        Image(systemName: "house.fill")
+                            .font(.system(size: 26))
+                        Image(systemName: "calendar")
+                            .font(.system(size: 26))
+                    }
                     .foregroundColor(.white)
-                    .padding()
+                    
+                    Text("Plan 12 outings together")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+                .padding(.top, 20)
             }
+            .shadow(radius: 10)
         }
         .onAppear {
+            // Start Bluetooth advertisement right away
+            if bluetoothManager.permissionGranted {
+                bluetoothManager.startAdvertising()
+            }
+            
             // Auto-dismiss splash screen after 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation {
                     isShowingSplash = false
-                    
-                    // Start Bluetooth advertisement when we enter the app
-                    if bluetoothManager.permissionGranted {
-                        bluetoothManager.startAdvertising()
-                        bluetoothManager.startScanning()
-                    }
                 }
             }
         }

@@ -7,120 +7,147 @@ struct MainMenuView: View {
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
     @State private var showDeviceList = false
+    @State private var showCalendarView = false
     @State private var customDeviceName = UserDefaults.standard.string(forKey: "DeviceCustomName") ?? ""
+    
+    var connectedDevicesCount: Int {
+        return DeviceStore.shared.getAllDevices().count
+    }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
+                // Header
+                Text("12×")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundColor(.blue)
+                    .padding(.top)
+                
+                Text("Plan 12 family outings this year")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .padding(.bottom)
+                
                 // Bluetooth scanning section
                 VStack(spacing: 10) {
-                    if bluetoothManager.isScanning {
-                        Text("Scanning...")
-                            .font(.headline)
-                            .foregroundColor(.blue)
-                        
-                        ProgressView(value: bluetoothManager.scanningProgress)
-                            .progressViewStyle(LinearProgressViewStyle())
-                            .frame(height: 8)
-                    } else if !bluetoothManager.nearbyDevices.isEmpty {
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Button(action: {
-                                    showDeviceList = true
-                                }) {
-                                    HStack {
-                                        Image(systemName: "person.2.fill")
-                                            .foregroundColor(.green)
-                                        Text("\(bluetoothManager.nearbyDevices.count) nearby")
-                                            .font(.headline)
-                                            .foregroundColor(.green)
-                                    }
-                                }
-                                Spacer()
-                                Button(action: {
-                                    bluetoothManager.startScanning()
-                                }) {
-                                    Image(systemName: "arrow.clockwise")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                            .padding(.horizontal)
-                            
-                            // Show details for each detected device
-                            ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
-                                let device = bluetoothManager.nearbyDevices[index]
-                                let adData = device.advertisementData
-                                
-                                HStack {
-                                    Image(systemName: "iphone")
-                                        .foregroundColor(.blue)
-                                    
-                                    VStack(alignment: .leading) {
-                                        // Show device name if available, otherwise show peripheral name or identifier
-                                        if let localName = adData[CBAdvertisementDataLocalNameKey] as? String {
-                                            Text("Name: \(localName)")
-                                                .font(.subheadline)
-                                                .bold()
-                                        } else if let name = device.peripheral.name, !name.isEmpty {
-                                            Text("Device: \(name)")
-                                                .font(.subheadline)
-                                                .bold()
-                                        } else {
-                                            Text("ID: \(device.peripheral.identifier.uuidString.prefix(8))...")
-                                                .font(.subheadline)
-                                                .bold()
-                                        }
-                                        
-                                        // Show other details
-                                        if let manufacturer = adData[CBAdvertisementDataManufacturerDataKey] {
-                                            Text("Manufacturer data present")
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal)
-                                .padding(.vertical, 2)
-                            }
-                        }
-                    } else {
-                        HStack {
-                            Image(systemName: "person.2.slash")
-                                .foregroundColor(.gray)
-                            Text("No one nearby")
+                    HStack {
+                        if bluetoothManager.isScanning {
+                            Text("Scanning for family members...")
+                                .font(.headline)
+                                .foregroundColor(.blue)
+                        } else if connectedDevicesCount > 0 {
+                            Text("\(connectedDevicesCount) family member\(connectedDevicesCount > 1 ? "s" : "")")
+                                .font(.headline)
+                                .foregroundColor(.green)
+                        } else {
+                            Text("No family members connected")
                                 .font(.headline)
                                 .foregroundColor(.gray)
-                            Spacer()
+                        }
+                        
+                        Spacer()
+                        
+                        if !bluetoothManager.isScanning && connectedDevicesCount > 0 {
                             Button(action: {
                                 bluetoothManager.startScanning()
                             }) {
                                 Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 18))
                                     .foregroundColor(.blue)
                             }
+                            .padding(8)
+                            .background(Color.blue.opacity(0.1))
+                            .clipShape(Circle())
                         }
-                        .padding(.horizontal)
+                    }
+                    .padding(.horizontal)
+                    
+                    if bluetoothManager.isScanning {
+                        ProgressView(value: bluetoothManager.scanningProgress)
+                            .progressViewStyle(LinearProgressViewStyle())
+                            .frame(height: 8)
+                            .padding(.horizontal)
+                    }
+                    
+                    // Connected devices preview
+                    if connectedDevicesCount > 0 {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 15) {
+                                ForEach(DeviceStore.shared.getAllDevices().prefix(3), id: \.identifier) { device in
+                                    VStack {
+                                        Image(systemName: "person.crop.circle.fill")
+                                            .font(.system(size: 36))
+                                            .foregroundColor(.blue)
+                                        Text(device.name)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(width: 70)
+                                }
+                                
+                                if connectedDevicesCount > 3 {
+                                    Button(action: {
+                                        showDeviceList = true
+                                    }) {
+                                        VStack {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(Color.gray.opacity(0.2))
+                                                    .frame(width: 36, height: 36)
+                                                Text("+\(connectedDevicesCount-3)")
+                                                    .font(.system(size: 14, weight: .bold))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            Text("See all")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                        .frame(width: 70)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
                     }
                 }
                 .padding()
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(10)
+                .cornerRadius(16)
                 .padding(.horizontal)
                 
-                Text("Welcome to 12x")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .padding()
-                
-                MenuButton(title: "Connect", iconName: "person.2.fill", color: .blue)
-                MenuButton(title: "Discover", iconName: "magnifyingglass", color: .green)
-                MenuButton(title: "Settings", iconName: "gear", color: .purple) {
-                    showSettings = true
+                // Main menu options
+                VStack(spacing: 15) {
+                    MenuButton(
+                        title: "Family Calendar", 
+                        iconName: "calendar", 
+                        color: .purple
+                    ) {
+                        showCalendarView = true
+                    }
+                    
+                    MenuButton(
+                        title: "Find Family Members", 
+                        iconName: "person.2.wave.2.fill", 
+                        color: .blue
+                    ) {
+                        showDeviceList = true
+                    }
+                    
+                    MenuButton(
+                        title: "Settings", 
+                        iconName: "gear", 
+                        color: .gray
+                    ) {
+                        showSettings = true
+                    }
                 }
+                .padding(.vertical)
                 
                 Spacer()
             }
             .padding()
-            .navigationTitle("Main Menu")
+            .navigationTitle("12× Family Outings")
+            .navigationBarHidden(true)
             .alert("Bluetooth Permission Required", isPresented: $bluetoothManager.showPermissionAlert) {
                 Button("Settings", role: .destructive) {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -129,7 +156,7 @@ struct MainMenuView: View {
                 }
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("This app needs Bluetooth access to find nearby users. Please enable Bluetooth permission in Settings.")
+                Text("This app needs Bluetooth access to find your family members. Please enable Bluetooth permission in Settings.")
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView(customDeviceName: $customDeviceName) {
@@ -139,11 +166,14 @@ struct MainMenuView: View {
                     bluetoothManager.startAdvertising()
                 }
             }
+            .sheet(isPresented: $showCalendarView) {
+                FamilyCalendarView()
+            }
             .onAppear {
                 if !hasCheckedPermission {
-                    // Start scanning when view appears if permissions are granted
+                    // Auto-start scanning only if no devices in database
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if bluetoothManager.permissionGranted {
+                        if bluetoothManager.permissionGranted && connectedDevicesCount == 0 {
                             bluetoothManager.startScanning()
                         }
                         hasCheckedPermission = true
@@ -155,6 +185,164 @@ struct MainMenuView: View {
             }
         }
     }
+}
+
+struct FamilyCalendarView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @State private var events: [CalendarEvent] = [
+        CalendarEvent(id: UUID(), title: "Family Picnic", date: Date().addingTimeInterval(86400 * 15), location: "City Park", participants: ["Mom", "Dad", "Sarah"]),
+        CalendarEvent(id: UUID(), title: "Zoo Trip", date: Date().addingTimeInterval(86400 * 45), location: "City Zoo", participants: ["Mom", "Dad", "Sarah", "Grandma"])
+    ]
+    @State private var showingAddEvent = false
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                List {
+                    ForEach(events) { event in
+                        EventRow(event: event)
+                    }
+                    .onDelete(perform: removeEvents)
+                }
+                
+                if events.isEmpty {
+                    VStack(spacing: 20) {
+                        Spacer()
+                        
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        
+                        Text("No Events Planned")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.gray)
+                        
+                        Text("Tap the + button to start planning your family outings")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
+                        Spacer()
+                    }
+                }
+            }
+            .navigationTitle("12× Calendar")
+            .navigationBarItems(
+                leading: Button("Back") {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                trailing: Button(action: {
+                    showingAddEvent = true
+                }) {
+                    Image(systemName: "plus")
+                }
+            )
+            .sheet(isPresented: $showingAddEvent) {
+                AddEventView { event in
+                    events.append(event)
+                    showingAddEvent = false
+                }
+            }
+        }
+    }
+    
+    func removeEvents(at offsets: IndexSet) {
+        events.remove(atOffsets: offsets)
+    }
+}
+
+struct EventRow: View {
+    let event: CalendarEvent
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(event.title)
+                .font(.headline)
+            
+            HStack {
+                Image(systemName: "calendar")
+                    .foregroundColor(.blue)
+                Text(event.date, style: .date)
+                    .font(.subheadline)
+            }
+            
+            HStack {
+                Image(systemName: "mappin.and.ellipse")
+                    .foregroundColor(.red)
+                Text(event.location)
+                    .font(.subheadline)
+            }
+            
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .foregroundColor(.green)
+                Text(event.participants.joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct AddEventView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @State private var title = ""
+    @State private var date = Date().addingTimeInterval(86400 * 7) // One week from now
+    @State private var location = ""
+    @State private var participants = ""
+    
+    var onSave: (CalendarEvent) -> Void
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Event Details")) {
+                    TextField("Event Title", text: $title)
+                    DatePicker("Date", selection: $date, displayedComponents: [.date])
+                    TextField("Location", text: $location)
+                }
+                
+                Section(header: Text("Participants")) {
+                    TextField("Participants (comma separated)", text: $participants)
+                        .autocapitalization(.words)
+                }
+            }
+            .navigationTitle("New Family Event")
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                trailing: Button("Save") {
+                    let participantsList = participants
+                        .split(separator: ",")
+                        .map { String($0).trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                    
+                    let event = CalendarEvent(
+                        id: UUID(),
+                        title: title,
+                        date: date,
+                        location: location,
+                        participants: participantsList
+                    )
+                    
+                    onSave(event)
+                }
+                .disabled(title.isEmpty || location.isEmpty)
+            )
+        }
+    }
+}
+
+struct CalendarEvent: Identifiable {
+    let id: UUID
+    let title: String
+    let date: Date
+    let location: String
+    let participants: [String]
 }
 
 struct DeviceListView: View {
