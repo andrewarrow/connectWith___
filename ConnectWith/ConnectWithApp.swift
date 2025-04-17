@@ -41,6 +41,11 @@ class DeviceStore {
     func getDevice(identifier: String) -> StoredDevice? {
         return devices[identifier]
     }
+    
+    // Delete all devices
+    func deleteAllDevices() {
+        devices.removeAll()
+    }
 }
 
 // MARK: - Onboarding View
@@ -544,10 +549,21 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     // MARK: - CBCentralManagerDelegate
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        // Check for reset flag in UserDefaults
+        let wasReset = UserDefaults.standard.bool(forKey: "app_was_reset")
+        
         switch central.state {
         case .poweredOn:
-            permissionGranted = true
-            startAdvertising() // Start advertising when BT is powered on
+            if wasReset {
+                // If app was reset, we need to force permission request again
+                permissionGranted = false
+                showPermissionAlert = true
+                // Clear the reset flag
+                UserDefaults.standard.removeObject(forKey: "app_was_reset")
+            } else {
+                permissionGranted = true
+                startAdvertising() // Start advertising when BT is powered on
+            }
         case .unauthorized:
             permissionGranted = false
             showPermissionAlert = true

@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreBluetooth
 import CoreData
+import OSLog
 
 struct MainMenuView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
@@ -146,18 +147,6 @@ struct MainMenuView: View {
                 .padding(.vertical)
                 
                 Spacer()
-                
-                // Debug button to reset onboarding (for testing)
-                #if DEBUG
-                Button(action: {
-                    hasCompletedOnboarding = false
-                }) {
-                    Text("Reset Onboarding")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                .padding(.bottom, 8)
-                #endif
             }
             .padding()
             .navigationTitle("12× Family Outings")
@@ -867,6 +856,10 @@ struct SettingsView: View {
     @Binding var customDeviceName: String
     var onSave: () -> Void
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @State private var showingResetConfirmation = false
+    @State private var showingRestartAlert = false
     
     var body: some View {
         NavigationView {
@@ -879,6 +872,19 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
+                
+                Section(header: Text("Data Management"), footer: Text("This will delete all saved device data and return you to the onboarding screen.")) {
+                    Button(action: {
+                        showingResetConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                            Text("Reset Database")
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarItems(
@@ -890,7 +896,45 @@ struct SettingsView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
             )
+            .confirmationDialog(
+                "Reset Database",
+                isPresented: $showingResetConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Reset Database", role: .destructive) {
+                    resetAppData()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete all saved devices and return to the onboarding screen. This cannot be undone.")
+            }
+            .alert("Database Reset Complete", isPresented: $showingRestartAlert) {
+                Button("OK") {
+                    // Just dismiss the settings view, will return to onboarding
+                    presentationMode.wrappedValue.dismiss()
+                }
+            } message: {
+                Text("Your database has been reset. You'll now return to the onboarding screen.")
+            }
         }
+    }
+    
+    private func resetAppData() {
+        // Clear device name from UserDefaults
+        UserDefaults.standard.removeObject(forKey: "DeviceCustomName")
+        
+        // Clear in-memory device store
+        DeviceStore.shared.deleteAllDevices()
+        
+        // Reset app to onboarding mode
+        hasCompletedOnboarding = false
+        
+        // Reset Bluetooth device scanning
+        bluetoothManager.stopScanning()
+        bluetoothManager.nearbyDevices.removeAll()
+        
+        // Show completion alert
+        showingRestartAlert = true
     }
 }
 
