@@ -248,13 +248,25 @@ struct OnboardingDeviceRow: View {
     let onSelect: () -> Void
     
     var deviceName: String {
-        if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
-            return localName
-        } else if let name = device.peripheral.name, !name.isEmpty {
-            return name
-        } else {
-            return "Unknown Device"
+        // First check if this device is already stored with a custom name
+        if let storedDevice = DeviceStore.shared.getDevice(identifier: device.peripheral.identifier.uuidString),
+           storedDevice.name != "Unknown Device" {
+            return storedDevice.name
         }
+        
+        // Next try to get the name from advertisement data
+        if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String, !localName.isEmpty {
+            return localName
+        }
+        
+        // Then try the peripheral name
+        if let name = device.peripheral.name, !name.isEmpty {
+            return name
+        }
+        
+        // Finally, use a more friendly name with device type if possible
+        let myDeviceName = UIDevice.current.name
+        return "Nearby Device (\(myDeviceName.prefix(10))...)"
     }
     
     // Check if this device is already in our saved list
@@ -297,16 +309,15 @@ struct OnboardingDeviceRow: View {
                         }
                     }
                     
-                    if deviceName != "Unknown Device" {
+                    // Always show the identifier as a secondary display item
+                    Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
+                        .font(.caption)
+                        .foregroundColor(Color.black.opacity(0.6)) // Darker gray for better contrast
+                    
+                    if !isSaved {
                         Text("Tap to rename and save")
                             .font(.caption)
                             .foregroundColor(.blue)
-                            .opacity(isSaved ? 0 : 1)
-                    } else {
-                        // Higher contrast for ID text
-                        Text(device.peripheral.identifier.uuidString.prefix(8) + "...")
-                            .font(.caption)
-                            .foregroundColor(Color.black.opacity(0.6)) // Darker gray for better contrast
                     }
                 }
                 
@@ -432,12 +443,20 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     private func saveDeviceToDatabase(peripheral: CBPeripheral, advertisementData: [String: Any]) {
         // Determine device name
         let deviceName: String
-        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String, !localName.isEmpty {
             deviceName = localName
         } else if let name = peripheral.name, !name.isEmpty {
             deviceName = name
         } else {
-            deviceName = "Unknown Device"
+            // Check if we already have a name for this device in the store
+            if let existingDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString),
+               existingDevice.name != "Unknown Device" {
+                deviceName = existingDevice.name
+            } else {
+                // Use host name if available which often includes personalized name
+                let myDeviceName = UIDevice.current.name
+                deviceName = "Nearby Device (\(myDeviceName.prefix(10))...)"
+            }
         }
         
         // Get manufacturer data if available

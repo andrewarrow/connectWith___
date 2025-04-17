@@ -31,93 +31,6 @@ struct MainMenuView: View {
                     .foregroundColor(.gray)
                     .padding(.bottom)
                 
-                // Bluetooth scanning section
-                VStack(spacing: 10) {
-                    HStack {
-                        if bluetoothManager.isScanning {
-                            Text("Scanning for family members...")
-                                .font(.headline)
-                                .foregroundColor(.blue)
-                        } else if connectedDevicesCount > 0 {
-                            Text("\(connectedDevicesCount) family member\(connectedDevicesCount > 1 ? "s" : "")")
-                                .font(.headline)
-                                .foregroundColor(.green)
-                        } else {
-                            Text("No family members connected")
-                                .font(.headline)
-                                .foregroundColor(.gray)
-                        }
-                        
-                        Spacer()
-                        
-                        if !bluetoothManager.isScanning && connectedDevicesCount > 0 {
-                            Button(action: {
-                                bluetoothManager.startScanning()
-                            }) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.blue)
-                            }
-                            .padding(8)
-                            .background(Color.blue.opacity(0.1))
-                            .clipShape(Circle())
-                        }
-                    }
-                    .padding(.horizontal)
-                    
-                    if bluetoothManager.isScanning {
-                        ProgressView(value: bluetoothManager.scanningProgress)
-                            .progressViewStyle(LinearProgressViewStyle())
-                            .frame(height: 8)
-                            .padding(.horizontal)
-                    }
-                    
-                    // Connected devices preview
-                    if connectedDevicesCount > 0 {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 15) {
-                                ForEach(DeviceStore.shared.getAllDevices().prefix(3), id: \.identifier) { device in
-                                    VStack {
-                                        Image(systemName: "person.crop.circle.fill")
-                                            .font(.system(size: 36))
-                                            .foregroundColor(.blue)
-                                        Text(device.name)
-                                            .font(.caption)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(width: 70)
-                                }
-                                
-                                if connectedDevicesCount > 3 {
-                                    Button(action: {
-                                        showDeviceList = true
-                                    }) {
-                                        VStack {
-                                            ZStack {
-                                                Circle()
-                                                    .fill(Color.gray.opacity(0.2))
-                                                    .frame(width: 36, height: 36)
-                                                Text("+\(connectedDevicesCount-3)")
-                                                    .font(.system(size: 14, weight: .bold))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            Text("See all")
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                        }
-                                        .frame(width: 70)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(16)
-                .padding(.horizontal)
-                
                 // Main menu options
                 VStack(spacing: 15) {
                     MenuButton(
@@ -658,13 +571,25 @@ struct NearbyDeviceRow: View {
     let advertisementData: [String: Any]
     
     var deviceName: String {
-        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
-            return localName
-        } else if let name = peripheral.name, !name.isEmpty {
-            return name
-        } else {
-            return "Unknown Device"
+        // First check if this device is already stored with a custom name
+        if let storedDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString),
+           storedDevice.name != "Unknown Device" {
+            return storedDevice.name
         }
+        
+        // Next try to get the name from advertisement data
+        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String, !localName.isEmpty {
+            return localName
+        }
+        
+        // Then try the peripheral name
+        if let name = peripheral.name, !name.isEmpty {
+            return name
+        }
+        
+        // If we've scanned this device before but don't have a name yet, see if we can derive a name from the device type
+        let myDeviceName = UIDevice.current.name
+        return "Nearby Device (\(myDeviceName.prefix(10))...)"
     }
     
     // Check if this device is already in our saved list

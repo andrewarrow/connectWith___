@@ -27,7 +27,7 @@ struct DeviceCard: View {
                 
                 // Device name and ID with FIXED contrast
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Unknown Device")
+                    Text(UIDevice.current.name)
                         .font(.title3)
                         .fontWeight(.medium)
                         // FIXED: Use black text in light mode, white in dark mode

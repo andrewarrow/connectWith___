@@ -87,7 +87,7 @@ struct DevicesList: View {
             
             DeviceResultRow(
                 deviceId: "ABDC1E68...",
-                deviceName: "Unknown Device",
+                deviceName: UIDevice.current.name,
                 isSaved: true
             )
         }

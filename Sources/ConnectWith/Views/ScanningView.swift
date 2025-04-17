@@ -59,7 +59,8 @@ struct ScanningView: View {
                     
                     // After 5 seconds, add a device (simulating detection)
                     if devicesFound.isEmpty && scanProgress > 0.6 {
-                        devicesFound.append(ScannedDevice(id: "ABDC1E68...", name: "Unknown Device", isSaved: true))
+                        let deviceName = UIDevice.current.name
+                        devicesFound.append(ScannedDevice(id: "ABDC1E68...", name: "Nearby Device (\(deviceName.prefix(10))...)", isSaved: true))
                     }
                 }
             }
