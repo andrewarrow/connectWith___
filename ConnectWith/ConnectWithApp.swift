@@ -1,5 +1,47 @@
 import SwiftUI
 import CoreBluetooth
+import CoreData
+import OSLog
+
+// MARK: - Simple In-Memory Device Store
+// Using a simpler approach to avoid CoreData initialization issues
+class DeviceStore {
+    static let shared = DeviceStore()
+    
+    struct StoredDevice {
+        let identifier: String
+        let name: String
+        let lastSeen: Date
+        var manufacturerData: Data?
+        var advertisementData: Data?
+    }
+    
+    // Dictionary to store devices by identifier
+    private var devices: [String: StoredDevice] = [:]
+    
+    // Save or update a device
+    func saveDevice(identifier: String, name: String, manufacturerData: Data? = nil, advertisementData: Data? = nil) {
+        let device = StoredDevice(
+            identifier: identifier,
+            name: name,
+            lastSeen: Date(),
+            manufacturerData: manufacturerData,
+            advertisementData: advertisementData
+        )
+        devices[identifier] = device
+    }
+    
+    // Get all devices
+    func getAllDevices() -> [StoredDevice] {
+        return Array(devices.values)
+            .sorted { $0.lastSeen > $1.lastSeen } // Sort by lastSeen (newest first)
+    }
+    
+    // Get device by identifier
+    func getDevice(identifier: String) -> StoredDevice? {
+        return devices[identifier]
+    }
+}
 
 @main
 struct ConnectWithApp: App {
@@ -25,6 +67,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     private var centralManager: CBCentralManager?
     private var peripheralManager: CBPeripheralManager?
+    private let deviceStore = DeviceStore.shared
     
     @Published var isScanning = false
     @Published var permissionGranted = false
@@ -36,6 +79,36 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         super.init()
         self.centralManager = CBCentralManager(delegate: self, queue: nil)
         self.peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
+    }
+    
+    private func saveDeviceToDatabase(peripheral: CBPeripheral, advertisementData: [String: Any]) {
+        // Determine device name
+        let deviceName: String
+        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+            deviceName = localName
+        } else if let name = peripheral.name, !name.isEmpty {
+            deviceName = name
+        } else {
+            deviceName = "Unknown Device"
+        }
+        
+        // Get manufacturer data if available
+        let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+        
+        // Create a serialized version of service UUIDs if available
+        var serviceData: Data? = nil
+        if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+            let uuidStrings = serviceUUIDs.map { $0.uuidString }
+            serviceData = try? JSONSerialization.data(withJSONObject: uuidStrings)
+        }
+        
+        // Save to our in-memory store
+        deviceStore.saveDevice(
+            identifier: peripheral.identifier.uuidString,
+            name: deviceName,
+            manufacturerData: manufacturerData,
+            advertisementData: serviceData
+        )
     }
     
     func startScanning() {
@@ -153,7 +226,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        // Check if we already discovered this device
+        // Check if we already discovered this device in the current scan
         if !nearbyDevices.contains(where: { $0.peripheral.identifier == peripheral.identifier }) {
             // Print device info for debugging
             print("Discovered device: \(peripheral.identifier)")
@@ -166,7 +239,11 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                 print("No local name in advertisement data")
             }
             
+            // Add to in-memory list for current session
             nearbyDevices.append((peripheral: peripheral, advertisementData: advertisementData))
+            
+            // Store in CoreData database (handles upserts internally)
+            saveDeviceToDatabase(peripheral: peripheral, advertisementData: advertisementData)
         }
     }
     

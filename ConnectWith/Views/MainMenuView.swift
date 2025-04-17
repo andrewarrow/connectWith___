@@ -1,10 +1,12 @@
 import SwiftUI
 import CoreBluetooth
+import CoreData
 
 struct MainMenuView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
+    @State private var showDeviceList = false
     @State private var customDeviceName = UserDefaults.standard.string(forKey: "DeviceCustomName") ?? ""
     
     var body: some View {
@@ -23,11 +25,17 @@ struct MainMenuView: View {
                     } else if !bluetoothManager.nearbyDevices.isEmpty {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Image(systemName: "person.2.fill")
-                                    .foregroundColor(.green)
-                                Text("\(bluetoothManager.nearbyDevices.count) nearby")
-                                    .font(.headline)
-                                    .foregroundColor(.green)
+                                Button(action: {
+                                    showDeviceList = true
+                                }) {
+                                    HStack {
+                                        Image(systemName: "person.2.fill")
+                                            .foregroundColor(.green)
+                                        Text("\(bluetoothManager.nearbyDevices.count) nearby")
+                                            .font(.headline)
+                                            .foregroundColor(.green)
+                                    }
+                                }
                                 Spacer()
                                 Button(action: {
                                     bluetoothManager.startScanning()
@@ -142,7 +150,128 @@ struct MainMenuView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showDeviceList) {
+                DeviceListView()
+            }
         }
+    }
+}
+
+struct DeviceListView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @State private var storedDevices: [DeviceStore.StoredDevice] = []
+    
+    var body: some View {
+        NavigationView {
+            List {
+                if storedDevices.isEmpty && bluetoothManager.nearbyDevices.isEmpty {
+                    Text("No devices found")
+                        .foregroundColor(.gray)
+                } else {
+                    // Show devices from memory store
+                    ForEach(storedDevices, id: \.identifier) { device in
+                        StoredDeviceRow(device: device)
+                    }
+                    
+                    // Also show current scan results
+                    ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
+                        let device = bluetoothManager.nearbyDevices[index]
+                        DeviceRowView(peripheral: device.peripheral, advertisementData: device.advertisementData)
+                    }
+                }
+            }
+            .navigationTitle("Nearby Devices")
+            .navigationBarItems(
+                leading: Button("Back") {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                trailing: Button(action: {
+                    bluetoothManager.startScanning()
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(.blue)
+                }
+            )
+            .onAppear {
+                // Load stored devices when view appears
+                storedDevices = DeviceStore.shared.getAllDevices()
+            }
+        }
+    }
+}
+
+struct StoredDeviceRow: View {
+    let device: DeviceStore.StoredDevice
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "iphone.radiowaves.left.and.right")
+                .foregroundColor(.green)
+            
+            VStack(alignment: .leading) {
+                Text(device.name)
+                    .font(.headline)
+                
+                Text("ID: \(device.identifier.prefix(8))...")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                Text("Last seen: \(formattedDate(device.lastSeen))")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                if device.manufacturerData != nil {
+                    Text("Manufacturer data available")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+struct DeviceRowView: View {
+    let peripheral: CBPeripheral
+    let advertisementData: [String: Any]
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "iphone")
+                .foregroundColor(.blue)
+            
+            VStack(alignment: .leading) {
+                // Show device name if available, otherwise show peripheral name or identifier
+                if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+                    Text("Name: \(localName)")
+                        .font(.subheadline)
+                        .bold()
+                } else if let name = peripheral.name, !name.isEmpty {
+                    Text("Device: \(name)")
+                        .font(.subheadline)
+                        .bold()
+                } else {
+                    Text("ID: \(peripheral.identifier.uuidString.prefix(8))...")
+                        .font(.subheadline)
+                        .bold()
+                }
+                
+                // Show other details
+                if let _ = advertisementData[CBAdvertisementDataManufacturerDataKey] {
+                    Text("Manufacturer data present")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

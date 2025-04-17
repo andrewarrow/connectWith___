@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="21754" systemVersion="22F66" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="BluetoothDevice" representedClassName=".BluetoothDevice" syncable="YES">
+        <attribute name="advertisementData" optional="YES" attributeType="Binary"/>
+        <attribute name="deviceName" optional="YES" attributeType="String"/>
+        <attribute name="identifier" attributeType="String"/>
+        <attribute name="lastSeen" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="manufacturerData" optional="YES" attributeType="Binary"/>
+        <uniqueConstraints>
+            <uniqueConstraint>
+                <constraint value="identifier"/>
+            </uniqueConstraint>
+        </uniqueConstraints>
+    </entity>
+</model>
