@@ -11,5 +11,9 @@
 		<string>bluetooth-central</string>
 		<string>bluetooth-peripheral</string>
 	</array>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_4514d666-d6c9-49cb-bc31-dc6dfa28bd58._tcp</string>
+	</array>
 </dict>
 </plist>
