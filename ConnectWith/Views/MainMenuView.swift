@@ -3,12 +3,230 @@ import CoreBluetooth
 import CoreData
 import OSLog
 
+#if DEBUG
+// Simple debug view that doesn't import BluetoothDebugView
+struct DebugInfoView: View {
+    @ObservedObject var bluetoothManager: BluetoothManager
+    @Environment(\.presentationMode) var presentationMode
+    @State private var logMessages: [String] = []
+    private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    @State private var isAutoRefreshing = false
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Group {
+                        Text("Device Info")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            DebugRow(label: "Device ID", value: UIDevice.current.identifierForVendor?.uuidString ?? "Unknown")
+                            DebugRow(label: "Device Name", value: bluetoothManager.deviceName)
+                            DebugRow(label: "BT Service UUID", value: BluetoothManager.serviceUUID.uuidString)
+                            DebugRow(label: "Calendar Char UUID", value: BluetoothManager.calendarCharacteristicUUID.uuidString)
+                            DebugRow(label: "Advertising", value: bluetoothManager.isAdvertising ? "Active" : "Inactive")
+                            DebugRow(label: "Permission", value: bluetoothManager.permissionGranted ? "Granted" : "Denied")
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    
+                    Group {
+                        Text("Connection Status")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            DebugRow(label: "Scanning", value: bluetoothManager.isScanning ? "Active" : "Inactive")
+                            DebugRow(label: "Scan Progress", value: "\(Int(bluetoothManager.scanningProgress * 100))%")
+                            DebugRow(label: "Connected Devices", value: "\(bluetoothManager.connectedPeripherals.count)")
+                            DebugRow(label: "Sync In Progress", value: bluetoothManager.syncInProgress ? "Yes" : "No")
+                            
+                            if let lastSyncTime = bluetoothManager.lastSyncTime {
+                                DebugRow(label: "Last Sync", value: formatDateTime(lastSyncTime))
+                                DebugRow(label: "With Device", value: bluetoothManager.lastSyncDeviceName ?? "Unknown")
+                                DebugRow(label: "Events Synced", value: "\(bluetoothManager.syncedEventsCount)")
+                            }
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    
+                    Group {
+                        Text("Nearby Devices (\(bluetoothManager.nearbyDevices.count))")
+                            .font(.headline)
+                        
+                        if bluetoothManager.nearbyDevices.isEmpty {
+                            Text("No nearby devices detected")
+                                .foregroundColor(.gray)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
+                        } else {
+                            ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
+                                let device = bluetoothManager.nearbyDevices[index]
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(getDeviceName(device))
+                                        .font(.headline)
+                                    
+                                    DebugRow(label: "ID", value: device.peripheral.identifier.uuidString)
+                                    DebugRow(label: "RSSI", value: device.rssi.stringValue)
+                                    
+                                    if let manufacturerData = device.advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+                                        DebugRow(label: "Manufacturer", value: "Present (\(manufacturerData.count) bytes)")
+                                    }
+                                    
+                                    if let serviceUUIDs = device.advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+                                        Text("Services: \(serviceUUIDs.map { $0.uuidString }.joined(separator: ", "))")
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                    
+                    HStack {
+                        Button("Start Scan") {
+                            bluetoothManager.startScanning()
+                            logMessages.insert("Manual scan started", at: 0)
+                        }
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        
+                        Button("Force Sync") {
+                            bluetoothManager.scanAndSyncWithFamilyMembers()
+                            logMessages.insert("Manual sync initiated", at: 0)
+                        }
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        
+                        Spacer()
+                        
+                        Toggle("Auto Refresh", isOn: $isAutoRefreshing)
+                    }
+                    
+                    Text("Log Messages")
+                        .font(.headline)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        if logMessages.isEmpty {
+                            Text("No log messages yet")
+                                .foregroundColor(.gray)
+                                .padding()
+                        } else {
+                            ForEach(logMessages.indices.prefix(20), id: \.self) { index in
+                                Text(logMessages[index])
+                                    .font(.caption)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                .padding()
+            }
+            .navigationTitle("Bluetooth Debug")
+            .navigationBarItems(
+                trailing: Button("Close") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            )
+            .onAppear {
+                updateLogs()
+            }
+            .onReceive(timer) { _ in
+                if isAutoRefreshing {
+                    updateLogs()
+                }
+            }
+        }
+    }
+    
+    private func formatDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+    
+    private func updateLogs() {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        
+        // Add basic bluetooth state info
+        logMessages.insert("[\(timestamp)] Bluetooth: \(bluetoothManager.permissionGranted ? "Authorized" : "Unauthorized")", at: 0)
+        logMessages.insert("[\(timestamp)] Scanning: \(bluetoothManager.isScanning ? "Yes" : "No")", at: 0)
+        logMessages.insert("[\(timestamp)] Nearby devices: \(bluetoothManager.nearbyDevices.count)", at: 0)
+        logMessages.insert("[\(timestamp)] Connected: \(bluetoothManager.connectedPeripherals.count)", at: 0)
+        
+        // Add sync status if available
+        if let lastSyncTime = bluetoothManager.lastSyncTime {
+            let formatter = RelativeDateTimeFormatter()
+            let relativeTime = formatter.localizedString(for: lastSyncTime, relativeTo: Date())
+            logMessages.insert("[\(timestamp)] Last sync: \(relativeTime)", at: 0)
+        }
+    }
+    
+    private func getDeviceName(_ device: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)) -> String {
+        if let storedDevice = DeviceStore.shared.getDevice(identifier: device.peripheral.identifier.uuidString) {
+            return storedDevice.name
+        } else if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String, !localName.isEmpty {
+            return localName
+        } else if let name = device.peripheral.name, !name.isEmpty {
+            return name
+        } else {
+            return "Unknown Device"
+        }
+    }
+}
+
+struct DebugRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+            
+            Text(value)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+extension NSNumber {
+    var stringValue: String {
+        return String(describing: self)
+    }
+}
+#endif
+
 struct MainMenuView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
     @State private var showDeviceList = false
     @State private var showCalendarView = false
+    @State private var showDebugView = false
     @State private var customDeviceName = UserDefaults.standard.string(forKey: "DeviceCustomName") ?? ""
     // Added to track if we're in onboarding mode (should always be false here since onboarding is completed)
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -56,6 +274,17 @@ struct MainMenuView: View {
                     ) {
                         showSettings = true
                     }
+                    
+                    #if DEBUG
+                    // In debug builds, show a debug button that opens a temporary view
+                    MenuButton(
+                        title: "Bluetooth Debug", 
+                        iconName: "antenna.radiowaves.left.and.right.circle", 
+                        color: .orange
+                    ) {
+                        showDebugView = true
+                    }
+                    #endif
                 }
                 .padding(.vertical)
                 
@@ -85,6 +314,12 @@ struct MainMenuView: View {
             .sheet(isPresented: $showCalendarView) {
                 FamilyCalendarView()
             }
+            #if DEBUG
+            .sheet(isPresented: $showDebugView) {
+                // In debug mode, show a temporary debug view with Bluetooth info
+                DebugInfoView(bluetoothManager: bluetoothManager)
+            }
+            #endif
             .onAppear {
                 // We should already have at least one device since onboarding is complete,
                 // but we can still start scanning again for more devices
@@ -599,8 +834,7 @@ struct DeviceListView: View {
                         
                         if !bluetoothManager.nearbyDevices.isEmpty {
                             List {
-                                ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
-                                    let device = bluetoothManager.nearbyDevices[index]
+                                ForEach(Array(bluetoothManager.nearbyDevices.enumerated()), id: \.offset) { (index, device) in
                                     NearbyDeviceRow(peripheral: device.peripheral, advertisementData: device.advertisementData)
                                         .contentShape(Rectangle())
                                         .onTapGesture {
@@ -647,8 +881,7 @@ struct DeviceListView: View {
                         .padding()
                     } else {
                         List {
-                            ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
-                                let device = bluetoothManager.nearbyDevices[index]
+                            ForEach(Array(bluetoothManager.nearbyDevices.enumerated()), id: \.offset) { (index, device) in
                                 NearbyDeviceRow(peripheral: device.peripheral, advertisementData: device.advertisementData)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -754,7 +987,7 @@ struct DeviceListView: View {
         }
     }
     
-    private func handleNearbyDeviceSelection(_ device: (peripheral: CBPeripheral, advertisementData: [String: Any])) {
+    private func handleNearbyDeviceSelection(_ device: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)) {
         // Get the best name for the device
         let deviceName: String
         if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {

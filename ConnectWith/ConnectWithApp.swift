@@ -394,7 +394,7 @@ extension CalendarStore.EventSyncInfo: Codable {
 struct OnboardingView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @Binding var isComplete: Bool
-    @State private var selectedDevice: (peripheral: CBPeripheral, advertisementData: [String: Any])? = nil
+    @State private var selectedDevice: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)? = nil
     @State private var customName: String = ""
     @State private var isNamingDevice = false
     @State private var hasStartedScanning = false
@@ -402,134 +402,46 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 24) {
             // Header
-            Text("Find Your First Family Member")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(.blue)
-                .padding(.top, 40)
-                .multilineTextAlignment(.center)
-            
-            Text("To get started, you need to connect with at least one family member's device")
-                .font(.body)
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            OnboardingHeaderView()
             
             Spacer()
             
             // Scanning animation/state
-            ZStack {
-                Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 15)
-                    .frame(width: 250, height: 250)
-                
-                if bluetoothManager.isScanning {
-                    // Animated scanning effect
-                    Circle()
-                        .trim(from: 0, to: bluetoothManager.scanningProgress)
-                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round))
-                        .frame(width: 250, height: 250)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.linear, value: bluetoothManager.scanningProgress)
-                    
-                    Text("Scanning...")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                } else if selectedDevice != nil {
-                    // Device selected
-                    VStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.green)
-                        
-                        Text("Device Found!")
-                            .font(.title2)
-                            .foregroundColor(.green)
-                    }
-                } else if bluetoothManager.nearbyDevices.isEmpty && hasStartedScanning {
-                    // No devices found
-                    VStack(spacing: 12) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.red)
-                        
-                        Text("No Devices Found")
-                            .font(.title2)
-                            .foregroundColor(.red)
-                    }
-                } else {
-                    // Ready to scan
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.2.wave.2.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.blue)
-                        
-                        Text("Tap to Start Scanning")
-                            .font(.title3)
-                            .foregroundColor(.blue)
+            ScanningStateView(
+                isScanning: bluetoothManager.isScanning,
+                scanningProgress: bluetoothManager.scanningProgress,
+                hasSelectedDevice: selectedDevice != nil,
+                deviceCount: bluetoothManager.nearbyDevices.count,
+                hasStartedScanning: hasStartedScanning,
+                onTapAction: {
+                    if !bluetoothManager.isScanning && selectedDevice == nil {
+                        bluetoothManager.startScanning()
+                        hasStartedScanning = true
                     }
                 }
-            }
-            .onTapGesture {
-                if !bluetoothManager.isScanning && selectedDevice == nil {
-                    bluetoothManager.startScanning()
-                    hasStartedScanning = true
-                }
-            }
+            )
             
             // List of found devices
             if !bluetoothManager.nearbyDevices.isEmpty && selectedDevice == nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Devices Found:")
-                        .font(.headline)
-                        .padding(.horizontal)
-                    
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(bluetoothManager.nearbyDevices.indices, id: \.self) { index in
-                                let device = bluetoothManager.nearbyDevices[index]
-                                OnboardingDeviceRow(device: device) {
-                                    selectedDevice = device
-                                    
-                                    // Pre-fill the custom name field
-                                    if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
-                                        customName = localName
-                                    } else if let name = device.peripheral.name, !name.isEmpty {
-                                        customName = name
-                                    } else {
-                                        customName = "Family Member"
-                                    }
-                                    
-                                    // Show the naming sheet
-                                    isNamingDevice = true
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
+                OnboardingDeviceListView(
+                    devices: bluetoothManager.nearbyDevices,
+                    onSelectDevice: { device in
+                        selectedDevice = device
+                        
+                        // Pre-fill the custom name field
+                        setInitialCustomName(for: device)
+                        
+                        // Show the naming sheet
+                        isNamingDevice = true
                     }
-                    .frame(height: 200)
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(16)
-                .padding(.horizontal)
+                )
             }
             
             // Action button
             if !bluetoothManager.isScanning && !bluetoothManager.nearbyDevices.isEmpty && selectedDevice == nil {
-                Button(action: {
+                ScanAgainButton {
                     bluetoothManager.startScanning()
-                }) {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Scan Again")
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
                 }
-                .padding(.horizontal, 40)
             }
             
             Spacer()
@@ -568,6 +480,16 @@ struct OnboardingView: View {
         }
     }
     
+    private func setInitialCustomName(for device: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)) {
+        if let localName = device.advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+            customName = localName
+        } else if let name = device.peripheral.name, !name.isEmpty {
+            customName = name
+        } else {
+            customName = "Family Member"
+        }
+    }
+    
     private func saveDeviceAndComplete(newName: String) {
         guard let device = selectedDevice else { return }
         
@@ -584,8 +506,141 @@ struct OnboardingView: View {
     }
 }
 
+// MARK: - Extracted Components for OnboardingView
+
+struct OnboardingHeaderView: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("Find Your First Family Member")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(.blue)
+                .padding(.top, 40)
+                .multilineTextAlignment(.center)
+            
+            Text("To get started, you need to connect with at least one family member's device")
+                .font(.body)
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+    }
+}
+
+struct ScanningStateView: View {
+    let isScanning: Bool
+    let scanningProgress: Double
+    let hasSelectedDevice: Bool
+    let deviceCount: Int
+    let hasStartedScanning: Bool
+    let onTapAction: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.gray.opacity(0.2), lineWidth: 15)
+                .frame(width: 250, height: 250)
+            
+            if isScanning {
+                // Animated scanning effect
+                Circle()
+                    .trim(from: 0, to: scanningProgress)
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round))
+                    .frame(width: 250, height: 250)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear, value: scanningProgress)
+                
+                Text("Scanning...")
+                    .font(.title2)
+                    .foregroundColor(.blue)
+            } else if hasSelectedDevice {
+                // Device selected
+                VStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.green)
+                    
+                    Text("Device Found!")
+                        .font(.title2)
+                        .foregroundColor(.green)
+                }
+            } else if deviceCount == 0 && hasStartedScanning {
+                // No devices found
+                VStack(spacing: 12) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.red)
+                    
+                    Text("No Devices Found")
+                        .font(.title2)
+                        .foregroundColor(.red)
+                }
+            } else {
+                // Ready to scan
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2.wave.2.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.blue)
+                    
+                    Text("Tap to Start Scanning")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .onTapGesture(perform: onTapAction)
+    }
+}
+
+struct OnboardingDeviceListView: View {
+    let devices: [(peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)]
+    let onSelectDevice: ((peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Devices Found:")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(Array(devices.enumerated()), id: \.offset) { (_, device) in
+                        OnboardingDeviceRow(device: device) {
+                            onSelectDevice(device)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .frame(height: 200)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(16)
+        .padding(.horizontal)
+    }
+}
+
+struct ScanAgainButton: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: "arrow.clockwise")
+                Text("Scan Again")
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .padding(.horizontal, 40)
+    }
+}
+
 struct OnboardingDeviceRow: View {
-    let device: (peripheral: CBPeripheral, advertisementData: [String: Any])
+    let device: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)
     let onSelect: () -> Void
     
     var deviceName: String {
@@ -775,17 +830,36 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     private var calendarService: CBMutableService?
     private var calendarCharacteristic: CBMutableCharacteristic?
-    private var connectedPeripherals: [CBPeripheral] = []
     
+    // Made accessible for debug view
+    @Published var connectedPeripherals: [CBPeripheral] = []
     @Published var isScanning = false
     @Published var permissionGranted = false
-    @Published var nearbyDevices: [(peripheral: CBPeripheral, advertisementData: [String: Any])] = []
+    @Published var nearbyDevices: [(peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)] = []
     @Published var scanningProgress: Double = 0.0
     @Published var showPermissionAlert = false
     @Published var syncInProgress = false
     @Published var lastSyncTime: Date?
     @Published var lastSyncDeviceName: String?
     @Published var syncedEventsCount = 0
+    
+    // Debug-specific properties
+    @Published var isAdvertising = false
+    var deviceName: String {
+        UserDefaults.standard.string(forKey: "DeviceCustomName") ?? UIDevice.current.name
+    }
+    @Published var lastTransferredData: Data?
+    @Published var lastTransferDirection: String = "None"
+    @Published var lastTransferTimestamp: Date?
+    
+    // Sync logs for debugging
+    struct SyncLogEntry {
+        let timestamp: Date
+        let deviceName: String
+        let action: String
+        let details: String
+    }
+    @Published var syncLog: [SyncLogEntry] = []
     
     override init() {
         super.init()
@@ -903,11 +977,18 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             calendarService?.characteristics = [calendarCharacteristic]
         }
         
-        // Add the service to the peripheral manager
-        if let calendarService = calendarService {
-            peripheralManager?.add(calendarService)
+        // Only add the service if the peripheral manager is powered on
+        if let peripheralManager = peripheralManager, peripheralManager.state == .poweredOn, 
+           let calendarService = calendarService {
+            peripheralManager.add(calendarService)
+            // Start advertising now
+            startAdvertisingService()
         }
-        
+        // Otherwise we'll wait for peripheralManagerDidUpdateState to be called
+    }
+    
+    // Helper method to start advertising after ensuring peripheral manager is ready
+    private func startAdvertisingService() {
         // Get personalized device name from settings bundle if available
         var deviceName = UIDevice.current.name
         
@@ -925,10 +1006,10 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         print("My device name: \(deviceName)")
         
         // Start advertising with device name and our service UUID
+        // Remove the problematic CBAdvertisementDataIsConnectable key
         let advertisementData: [String: Any] = [
             CBAdvertisementDataServiceUUIDsKey: [BluetoothManager.serviceUUID],
-            CBAdvertisementDataLocalNameKey: deviceName,
-            CBAdvertisementDataIsConnectable: true
+            CBAdvertisementDataLocalNameKey: deviceName
         ]
         
         // Print what we're advertising
@@ -936,6 +1017,16 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         // Start advertising with enhanced data
         peripheralManager?.startAdvertising(advertisementData)
+        
+        // Update state for debug
+        isAdvertising = true
+        
+        // Add to sync log
+        addSyncLogEntry(
+            deviceName: "This Device",
+            action: "Started Advertising",
+            details: "Service: \(BluetoothManager.serviceUUID.uuidString), Name: \(deviceName)"
+        )
         
         // Confirm advertising started
         print("Advertising started with name: \(deviceName)")
@@ -1017,6 +1108,18 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         // Update the characteristic value
         calendarCharacteristic?.value = calendarData
         
+        // Update debug properties
+        lastTransferredData = calendarData
+        lastTransferDirection = "Sent (as Peripheral)"
+        lastTransferTimestamp = Date()
+        
+        // Add to sync log
+        addSyncLogEntry(
+            deviceName: "This Device",
+            action: "Sent Calendar Data (Peripheral)",
+            details: "Size: \(calendarData.count) bytes"
+        )
+        
         // Notify subscribers that the value has changed
         if let calendarCharacteristic = calendarCharacteristic {
             peripheralManager?.updateValue(calendarData, for: calendarCharacteristic, onSubscribedCentrals: nil)
@@ -1024,7 +1127,17 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     }
     
     func stopAdvertising() {
-        peripheralManager?.stopAdvertising()
+        if isAdvertising {
+            peripheralManager?.stopAdvertising()
+            isAdvertising = false
+            
+            // Add to sync log
+            addSyncLogEntry(
+                deviceName: "This Device",
+                action: "Stopped Advertising",
+                details: ""
+            )
+        }
     }
     
     // MARK: - CBCentralManagerDelegate
@@ -1056,10 +1169,15 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         // Check if we already discovered this device in the current scan
-        if !nearbyDevices.contains(where: { $0.peripheral.identifier == peripheral.identifier }) {
+        let alreadyDiscovered = nearbyDevices.contains { device in
+            return device.peripheral.identifier == peripheral.identifier
+        }
+        
+        if !alreadyDiscovered {
             // Print device info for debugging
             print("Discovered device: \(peripheral.identifier)")
             print("Advertisement data: \(advertisementData)")
+            print("RSSI: \(RSSI)")
             
             // Look specifically for the device name
             if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
@@ -1069,10 +1187,44 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             }
             
             // Add to in-memory list for current session
-            nearbyDevices.append((peripheral: peripheral, advertisementData: advertisementData))
+            nearbyDevices.append((peripheral: peripheral, advertisementData: advertisementData, rssi: RSSI))
             
             // Store in CoreData database (handles upserts internally)
             saveDeviceToDatabase(peripheral: peripheral, advertisementData: advertisementData)
+            
+            // Add to sync log for debug view
+            let deviceName = getDeviceName(peripheral: peripheral, advertisementData: advertisementData)
+            let servicesDesc = advertisementData[CBAdvertisementDataServiceUUIDsKey] != nil ? "Present" : "None"
+            addSyncLogEntry(deviceName: deviceName, action: "Discovered", details: "RSSI: \(RSSI), Services: \(servicesDesc)")
+        }
+    }
+    
+    // Helper method to get device name for logs
+    private func getDeviceName(peripheral: CBPeripheral, advertisementData: [String: Any]) -> String {
+        if let storedDevice = deviceStore.getDevice(identifier: peripheral.identifier.uuidString) {
+            return storedDevice.name
+        } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String, !localName.isEmpty {
+            return localName
+        } else if let name = peripheral.name, !name.isEmpty {
+            return name
+        } else {
+            return "Unknown Device (\(peripheral.identifier.uuidString.prefix(8)))"
+        }
+    }
+    
+    // Helper method to add sync log entries for debug view
+    private func addSyncLogEntry(deviceName: String, action: String, details: String = "") {
+        let entry = SyncLogEntry(
+            timestamp: Date(),
+            deviceName: deviceName,
+            action: action,
+            details: details
+        )
+        syncLog.append(entry)
+        
+        // Trim log if it gets too long
+        if syncLog.count > 100 {
+            syncLog.removeFirst()
         }
     }
     
@@ -1152,6 +1304,11 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                 // Update sync status
                 syncedEventsCount += syncCount
                 lastSyncTime = Date()
+                lastTransferTimestamp = Date()
+                
+                // For debug view
+                lastTransferredData = data
+                lastTransferDirection = "Received (as Central)"
                 
                 // Get the device name
                 if let storedDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString) {
@@ -1163,6 +1320,22 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                 }
                 
                 print("Synced \(syncCount) events with \(lastSyncDeviceName ?? "Unknown Device")")
+                
+                // Add to sync log
+                addSyncLogEntry(
+                    deviceName: lastSyncDeviceName ?? "Unknown Device",
+                    action: "Received Calendar Data",
+                    details: "Size: \(data.count) bytes, Events: \(syncCount)"
+                )
+                
+                // If there was an error, log it
+                if let error = error {
+                    addSyncLogEntry(
+                        deviceName: lastSyncDeviceName ?? "Unknown Device",
+                        action: "Error",
+                        details: error.localizedDescription
+                    )
+                }
             }
         }
     }
@@ -1170,6 +1343,29 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
             print("Calendar data sent to \(peripheral.identifier)")
+            
+            // Update debug info
+            lastTransferDirection = "Sent (as Central)"
+            lastTransferTimestamp = Date()
+            
+            // Get device name for debug
+            let deviceName = getDeviceName(peripheral: peripheral, advertisementData: [:])
+            
+            // Add to sync log
+            addSyncLogEntry(
+                deviceName: deviceName,
+                action: "Sent Calendar Data",
+                details: "To peripheral: \(peripheral.identifier.uuidString)"
+            )
+            
+            // If there was an error, log it
+            if let error = error {
+                addSyncLogEntry(
+                    deviceName: deviceName,
+                    action: "Error",
+                    details: error.localizedDescription
+                )
+            }
             
             // Disconnect after successful write
             centralManager?.cancelPeripheralConnection(peripheral)
@@ -1182,11 +1378,20 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         switch peripheral.state {
         case .poweredOn:
             permissionGranted = true
+            
+            // If we have services to advertise, add them now
+            if let calendarService = calendarService, !isAdvertising {
+                peripheralManager?.add(calendarService)
+                // Start advertising now that Bluetooth is powered on
+                startAdvertisingService()
+            }
         case .unauthorized:
             permissionGranted = false
             showPermissionAlert = true
+            isAdvertising = false
         default:
             permissionGranted = false
+            isAdvertising = false
         }
     }
     
@@ -1215,8 +1420,27 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                     // Update sync status
                     syncedEventsCount += syncCount
                     lastSyncTime = Date()
+                    lastTransferTimestamp = Date()
+                    
+                    // For debug view
+                    lastTransferredData = data
+                    lastTransferDirection = "Received"
                     
                     print("Processed \(syncCount) events from peripheral write")
+                    
+                    // Log for debug view
+                    let centralIdentifier = request.central.identifier.uuidString
+                    var deviceName = "Unknown Device"
+                    if let storedDevice = deviceStore.getDevice(identifier: centralIdentifier) {
+                        deviceName = storedDevice.name
+                    }
+                    
+                    // Add to sync log
+                    addSyncLogEntry(
+                        deviceName: deviceName,
+                        action: "Received Data",
+                        details: "Size: \(data.count) bytes, Events: \(syncCount)"
+                    )
                 }
             }
         }
