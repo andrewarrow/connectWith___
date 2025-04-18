@@ -159,11 +159,13 @@ struct HistoryListView: View {
                 }) {
                     if isExpanded(group.id) {
                         ForEach(group.historyItems) { item in
-                            HistoryItemRow(item: item, formatChangeDescription: historyManager.formatChangeDescription(changes:))
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    toggleItem(item.id)
-                                }
+                            NavigationLink(destination: HistoryDetailView(
+                                historyItem: item,
+                                event: historyManager.getEvent(for: item)
+                            )) {
+                                HistoryItemRow(item: item, formatChangeDescription: historyManager.formatChangeDescription(changes:))
+                                    .contentShape(Rectangle())
+                            }
                             
                             if expandedItems.contains(item.id) {
                                 HistoryItemDetailView(item: item, formatChangeDescription: historyManager.formatChangeDescription(changes:))
