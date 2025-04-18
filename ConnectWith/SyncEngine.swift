@@ -628,11 +628,15 @@ class SyncEngine: ObservableObject {
                 return
             }
             
+            let startTime = Date()
+            
             // Process data in a background context
             self.persistenceController.performBackgroundTask { context in
                 var eventsReceived = 0
-                var historyReceived = 0
+                var historiesProcessed = 0
+                var historiesAdded = 0
                 var conflicts = 0
+                var conflictDetails: [String] = []
                 
                 // Get local and base events for conflict detection
                 var localEvents: [EventDTO] = []
@@ -716,6 +720,11 @@ class SyncEngine: ObservableObject {
                                     for conflict in detailedConflicts {
                                         let severity = conflict.overallSeverity
                                         let affectedFields = conflict.fieldConflicts.map { $0.fieldName }.joined(separator: ", ")
+                                        
+                                        // Add to conflict details for logging
+                                        let detailMsg = "Event \(conflict.local.id.uuidString.prefix(8)): Severity \(severity), Fields: \(affectedFields)"
+                                        conflictDetails.append(detailMsg)
+                                        
                                         Logger.sync.info("Detailed conflict for event \(conflict.local.id): Severity: \(severity), Fields: \(affectedFields)")
                                     }
                                 }
@@ -769,16 +778,33 @@ class SyncEngine: ObservableObject {
                     }
                 }
                 
-                // Import history if we have any
+                // Import and merge edit histories if we have any
                 if historyData.count > 0 {
-                    DataExchangeProtocol.deserializeAndImportEditHistory(data: historyData, context: context) { result in
-                        switch result {
-                        case .success(let count):
-                            historyReceived = count
-                            
-                        case .failure(let error):
-                            promise(.failure(SyncError.dataFormatError("Failed to import history: \(error.localizedDescription)")))
-                            return
+                    // First, deserialize the edit histories
+                    var remoteHistories: [EditHistoryDTO] = []
+                    
+                    if let historyBatch: DataExchangeProtocol.EditHistoryBatch = DataExchangeProtocol.deserialize(historyData, to: DataExchangeProtocol.EditHistoryBatch.self) {
+                        remoteHistories = historyBatch.histories
+                        historiesProcessed = remoteHistories.count
+                        
+                        Logger.sync.info("Received \(historiesProcessed) edit histories from device \(deviceId)")
+                        
+                        // Merge edit histories chronologically using SyncHistoryMerger
+                        let mergeResult = SyncHistoryMerger.shared.mergeEditHistories(remoteHistories: remoteHistories, context: context)
+                        historiesProcessed = mergeResult.processed
+                        historiesAdded = mergeResult.added
+                        
+                        Logger.sync.info("Merged \(historiesAdded) new edit histories out of \(historiesProcessed) processed")
+                    } else {
+                        // Fallback to standard import if the new format isn't recognized
+                        DataExchangeProtocol.deserializeAndImportEditHistory(data: historyData, context: context) { result in
+                            switch result {
+                            case .success(let count):
+                                historiesProcessed = count
+                                
+                            case .failure(let error):
+                                Logger.sync.error("Failed to import edit history using standard import: \(error.localizedDescription)")
+                            }
                         }
                     }
                 }
@@ -795,6 +821,24 @@ class SyncEngine: ObservableObject {
                     Logger.sync.error("Error fetching device name: \(error.localizedDescription)")
                 }
                 
+                // Calculate sync duration
+                let syncDuration = Date().timeInterval(since: startTime)
+                
+                // Create a detailed sync log with enhanced information
+                let syncLog = self.syncHistoryManager.createSyncLog(
+                    deviceId: deviceId,
+                    deviceName: deviceName,
+                    eventsReceived: eventsReceived,
+                    eventsSent: eventsData.count > 0 ? 1 : 0,
+                    conflicts: conflicts,
+                    resolutionMethod: conflicts > 0 ? "merge" : nil,
+                    conflictDetails: conflictDetails.isEmpty ? nil : conflictDetails,
+                    syncDuration: syncDuration,
+                    syncSuccess: true,
+                    historiesProcessed: historiesProcessed,
+                    historiesAdded: historiesAdded
+                )
+                
                 // Create success result
                 let result = SyncResult(
                     deviceId: deviceId,
@@ -802,7 +846,8 @@ class SyncEngine: ObservableObject {
                     success: true,
                     eventsReceived: eventsReceived,
                     eventsSent: eventsData.count > 0 ? 1 : 0,
-                    conflicts: conflicts
+                    conflicts: conflicts,
+                    duration: syncDuration
                 )
                 
                 promise(.success(result))

@@ -244,7 +244,7 @@ class DataExchangeProtocol {
         }
     }
     
-    /// DTO for EditHistory entity
+    /// DTO for EditHistory entity with enhanced support for chronological merging
     struct EditHistoryDTO: Codable {
         let id: UUID
         let deviceId: String
@@ -257,6 +257,12 @@ class DataExchangeProtocol {
         let newDay: Int?
         let timestamp: Date
         let eventId: UUID
+        
+        // Enhanced fields for history merging
+        let sourceVersion: String?  // Protocol version that created this record
+        let isConflictResolution: Bool? // Whether this record was created as part of conflict resolution
+        let mergeId: UUID? // ID linking related merge records
+        let parentHistoryIds: [UUID]? // IDs of parent history records
         
         /// Create DTO from Core Data EditHistory entity
         static func from(history: EditHistory) -> EditHistoryDTO? {
@@ -273,7 +279,45 @@ class DataExchangeProtocol {
                 previousDay: history.previousDay > 0 ? Int(history.previousDay) : nil,
                 newDay: history.newDay > 0 ? Int(history.newDay) : nil,
                 timestamp: history.timestamp,
-                eventId: event.id
+                eventId: event.id,
+                sourceVersion: protocolVersion, // Current protocol version
+                isConflictResolution: false, // Will be set to true in conflict resolution
+                mergeId: nil, // Set during conflict merging
+                parentHistoryIds: nil // Set during conflict merging
+            )
+        }
+        
+        /// Create a special conflict resolution history
+        static func createConflictResolution(
+            localHistory: EditHistoryDTO,
+            remoteHistory: EditHistoryDTO,
+            resolvedValues: [String: Any],
+            timestamp: Date = Date()
+        ) -> EditHistoryDTO {
+            // Create a unique merge ID to link the records
+            let mergeId = UUID()
+            
+            // Extract fields from resolved values
+            let newTitle = resolvedValues["title"] as? String
+            let newLocation = resolvedValues["location"] as? String
+            let newDay = resolvedValues["day"] as? Int
+            
+            return EditHistoryDTO(
+                id: UUID(), // New record
+                deviceId: "conflict_resolution",
+                deviceName: "Conflict Resolution",
+                previousTitle: "CONFLICT: \(localHistory.newTitle ?? "") vs \(remoteHistory.newTitle ?? "")",
+                newTitle: newTitle,
+                previousLocation: "CONFLICT: \(localHistory.newLocation ?? "") vs \(remoteHistory.newLocation ?? "")",
+                newLocation: newLocation,
+                previousDay: localHistory.newDay ?? remoteHistory.newDay,
+                newDay: newDay,
+                timestamp: timestamp,
+                eventId: localHistory.eventId,
+                sourceVersion: protocolVersion,
+                isConflictResolution: true,
+                mergeId: mergeId,
+                parentHistoryIds: [localHistory.id, remoteHistory.id]
             )
         }
         
@@ -415,6 +459,22 @@ class DataExchangeProtocol {
         let histories: [EditHistoryDTO]
         let sourceDeviceId: String
         let batchTimestamp: Date
+        let version: String
+        let sortedChronologically: Bool
+        
+        init(
+            histories: [EditHistoryDTO],
+            sourceDeviceId: String,
+            batchTimestamp: Date = Date(),
+            version: String = "1.1",
+            sortedChronologically: Bool = true
+        ) {
+            self.histories = histories
+            self.sourceDeviceId = sourceDeviceId
+            self.batchTimestamp = batchTimestamp
+            self.version = version
+            self.sortedChronologically = sortedChronologically
+        }
     }
     
     /// Container for a batch of family devices
@@ -665,17 +725,20 @@ class DataExchangeProtocol {
             predicate = NSPredicate(format: "timestamp > %@", lastSync as NSDate)
         }
         
-        // Fetch history entries
-        let histories = historyRepository.fetch(predicate: predicate, sortDescriptors: nil)
+        // Fetch history entries with timestamp sorting for chronological order
+        let sortDescriptors = [NSSortDescriptor(key: "timestamp", ascending: true)]
+        let histories = historyRepository.fetch(predicate: predicate, sortDescriptors: sortDescriptors)
         
         // Convert to DTOs (filtering out any with missing events)
         let historyDTOs = histories.compactMap { EditHistoryDTO.from(history: $0) }
         
-        // Create batch
+        // Create batch with enhanced version information
         let batch = EditHistoryBatch(
             histories: historyDTOs,
             sourceDeviceId: deviceId,
-            batchTimestamp: Date()
+            batchTimestamp: Date(),
+            version: "1.1",  // Enhanced version with support for chronological merging
+            sortedChronologically: true
         )
         
         // Serialize
@@ -694,7 +757,18 @@ class DataExchangeProtocol {
             return
         }
         
-        // Import histories
+        // Check for enhanced version support
+        let isEnhancedVersion = batch.version == "1.1"
+        
+        if isEnhancedVersion {
+            // Use the enhanced SyncHistoryMerger for chronological merging
+            let mergeResult = SyncHistoryMerger.shared.mergeEditHistories(remoteHistories: batch.histories, context: context)
+            
+            completion(.success(mergeResult.added))
+            return
+        }
+        
+        // Legacy import for backward compatibility
         var importedCount = 0
         let transactionCoordinator = TransactionCoordinator(context: context)
         
