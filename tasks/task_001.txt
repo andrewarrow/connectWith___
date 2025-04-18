@@ -1,0 +1,17 @@
+# Task ID: 1
+# Title: Setup Core Data Models and Database
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Implement the local SQLite database with Core Data models for Event, EditHistory, FamilyDevice, and SyncLog entities as specified in the PRD.
+# Details:
+Create a Core Data stack with the following models:
+1. Event: UUID, month (1-12), title, location, day (1-31), createdAt, lastModifiedAt, lastModifiedBy, color
+2. EditHistory: UUID, eventId, deviceId, deviceName, previousTitle, newTitle, previousLocation, newLocation, previousDay, newDay, timestamp
+3. FamilyDevice: UUID, bluetoothIdentifier, customName, lastSyncTimestamp, isLocalDevice
+4. SyncLog: UUID, timestamp, deviceId, deviceName, eventsReceived, eventsSent, conflicts, resolutionMethod, details
+
+Implement CRUD operations for all entities and ensure data encryption using iOS data protection.
+
+# Test Strategy:
+Write unit tests for each model and CRUD operation. Verify data persistence across app restarts. Test data encryption and ensure proper relationships between entities.

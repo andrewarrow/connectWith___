@@ -1,0 +1,85 @@
+# Task ID: 5
+# Title: Develop Bluetooth Discovery Engine
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Implement the Core Bluetooth functionality to scan for and discover other iOS devices running the 12x app in proximity.
+# Details:
+Create a Bluetooth service using Core Bluetooth framework with:
+1. Background BLE scanner that runs periodically to discover nearby devices
+2. Custom service UUID for 12x app identification
+3. Advertisement data structure for device identification
+4. Battery-optimized scanning intervals based on time of day and motion
+5. Storage of discovered devices in the FamilyDevice model
+6. Background mode configuration for Bluetooth operation
+7. Handling of iOS Bluetooth state changes (on/off/unauthorized)
+
+Implement using CBCentralManager and CBPeripheralManager for full scanning and advertising capabilities.
+
+# Test Strategy:
+Test discovery between multiple physical devices. Verify background scanning works correctly. Measure battery impact and optimize scanning intervals. Test behavior when Bluetooth is turned off or permissions are revoked.
+
+# Subtasks:
+## 1. Implement Core Bluetooth Manager Setup and State Handling [pending]
+### Dependencies: None
+### Description: Create the foundation Bluetooth manager class that initializes Core Bluetooth components and handles state changes
+### Details:
+Implementation steps:
+1. Create a BluetoothDiscoveryManager singleton class
+2. Initialize CBCentralManager and CBPeripheralManager with appropriate delegates
+3. Define the custom service UUID for 12x app identification
+4. Implement state change handlers for Bluetooth (on/off/unauthorized)
+5. Create methods to check and request permissions
+6. Configure background modes in Info.plist for Bluetooth operation
+7. Implement a state machine to track the Bluetooth service status
+8. Add notification system for Bluetooth state changes
+
+Testing approach:
+- Unit test the state machine transitions
+- Test permission handling with different authorization scenarios
+- Verify background mode configuration is correctly set up
+- Test state change notifications are properly dispatched
+
+## 2. Implement Device Scanning and Advertising Logic [pending]
+### Dependencies: 5.1
+### Description: Develop the core scanning and advertising functionality to discover nearby devices and make the device discoverable
+### Details:
+Implementation steps:
+1. Implement CBCentralManager scanning methods with filters for the 12x service UUID
+2. Create the advertisement data structure with device identification information
+3. Implement CBPeripheralManager advertising methods to broadcast device presence
+4. Add connection handling for discovered peripherals to exchange additional data
+5. Implement disconnect and cleanup procedures
+6. Create a scanning cycle manager to control when scanning occurs
+7. Add timeout handling for scans and connections
+8. Implement data parsing for received advertisement packets
+
+Testing approach:
+- Test scanning with mock peripheral devices
+- Verify advertisement data structure is correctly formatted
+- Test connection establishment between two devices
+- Verify timeout handling works correctly
+- Test parsing of advertisement data from different device types
+
+## 3. Implement Battery Optimization and Device Storage [pending]
+### Dependencies: 5.1, 5.2
+### Description: Add battery optimization strategies for Bluetooth operations and integrate with the FamilyDevice model for persistent storage
+### Details:
+Implementation steps:
+1. Implement adaptive scanning intervals based on time of day
+2. Integrate with device motion/activity recognition to adjust scanning frequency
+3. Create power-efficient scanning profiles (aggressive, normal, conservative)
+4. Implement the FamilyDevice model integration to store discovered devices
+5. Add persistence layer for discovered devices using Core Data or similar
+6. Create methods to update device information when rediscovered
+7. Implement last-seen timestamp tracking for discovered devices
+8. Add analytics to monitor battery impact of different scanning strategies
+9. Create background task scheduling for periodic scanning
+
+Testing approach:
+- Measure battery consumption in different scanning modes
+- Test persistence of discovered devices across app restarts
+- Verify adaptive scanning behavior changes based on conditions
+- Test background scanning activation at scheduled intervals
+- Verify device information is properly updated when rediscovered
+

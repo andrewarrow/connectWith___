@@ -1,0 +1,19 @@
+# Task ID: 2
+# Title: Implement Monthly Event Cards UI
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Create the core UI component of 12 visually distinct, color-coded cards (one per month) that display a single important event for each month.
+# Details:
+Design a card-based interface inspired by iOS Wallet passes with:
+1. 12 cards in a scrollable view, one for each month
+2. Unique color coding for each month
+3. Card layout showing month name, event title prominently, with date and location in smaller text
+4. Empty state design for months without events
+5. Support for Dynamic Type and VoiceOver accessibility
+6. Tap interaction to open edit interface
+
+Implement using UICollectionView or SwiftUI equivalent with custom card views.
+
+# Test Strategy:
+Create UI tests for card rendering, scrolling behavior, and tap interactions. Test accessibility features including VoiceOver and Dynamic Type. Verify color contrast meets accessibility standards.

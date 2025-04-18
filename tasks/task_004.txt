@@ -1,0 +1,19 @@
+# Task ID: 4
+# Title: Implement Onboarding Flow
+# Status: pending
+# Dependencies: 2
+# Priority: medium
+# Description: Create the app's initial onboarding experience including welcome screens, Bluetooth permission requests, and initial setup.
+# Details:
+Design and implement an onboarding flow with:
+1. Welcome screens explaining the 12x concept and value proposition
+2. Permission request for Bluetooth access with clear explanation
+3. Device identification setup (for local device)
+4. Initial calendar view setup with empty month cards
+5. First-time user guidance overlays
+6. Skip options for returning users
+
+Store onboarding completion status to avoid showing it to returning users.
+
+# Test Strategy:
+Test the complete onboarding flow on first launch. Verify permission dialogs appear correctly. Test skipping onboarding on subsequent launches. Verify the app state is properly initialized after onboarding.

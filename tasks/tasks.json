@@ -1,0 +1,238 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Setup Core Data Models and Database",
+      "description": "Implement the local SQLite database with Core Data models for Event, EditHistory, FamilyDevice, and SyncLog entities as specified in the PRD.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": "high",
+      "details": "Create a Core Data stack with the following models:\n1. Event: UUID, month (1-12), title, location, day (1-31), createdAt, lastModifiedAt, lastModifiedBy, color\n2. EditHistory: UUID, eventId, deviceId, deviceName, previousTitle, newTitle, previousLocation, newLocation, previousDay, newDay, timestamp\n3. FamilyDevice: UUID, bluetoothIdentifier, customName, lastSyncTimestamp, isLocalDevice\n4. SyncLog: UUID, timestamp, deviceId, deviceName, eventsReceived, eventsSent, conflicts, resolutionMethod, details\n\nImplement CRUD operations for all entities and ensure data encryption using iOS data protection.",
+      "testStrategy": "Write unit tests for each model and CRUD operation. Verify data persistence across app restarts. Test data encryption and ensure proper relationships between entities."
+    },
+    {
+      "id": 2,
+      "title": "Implement Monthly Event Cards UI",
+      "description": "Create the core UI component of 12 visually distinct, color-coded cards (one per month) that display a single important event for each month.",
+      "status": "pending",
+      "dependencies": [
+        1
+      ],
+      "priority": "high",
+      "details": "Design a card-based interface inspired by iOS Wallet passes with:\n1. 12 cards in a scrollable view, one for each month\n2. Unique color coding for each month\n3. Card layout showing month name, event title prominently, with date and location in smaller text\n4. Empty state design for months without events\n5. Support for Dynamic Type and VoiceOver accessibility\n6. Tap interaction to open edit interface\n\nImplement using UICollectionView or SwiftUI equivalent with custom card views.",
+      "testStrategy": "Create UI tests for card rendering, scrolling behavior, and tap interactions. Test accessibility features including VoiceOver and Dynamic Type. Verify color contrast meets accessibility standards."
+    },
+    {
+      "id": 3,
+      "title": "Build Event Creation and Editing Interface",
+      "description": "Develop the interface for creating and editing event details on the monthly cards, including title, location, and date fields.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        2
+      ],
+      "priority": "high",
+      "details": "Create a modal edit interface that appears when a month card is tapped, containing:\n1. Title input field with appropriate validation\n2. Location input field\n3. Date picker limited to the selected month\n4. Preview of how the card will look with changes\n5. Confirmation and cancel buttons\n6. Logic to save changes to Core Data\n7. Code to update the EditHistory when changes are made\n8. Device identifier tracking for edit attribution\n\nEnsure the interface is intuitive and follows iOS design guidelines.",
+      "testStrategy": "Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation."
+    },
+    {
+      "id": 4,
+      "title": "Implement Onboarding Flow",
+      "description": "Create the app's initial onboarding experience including welcome screens, Bluetooth permission requests, and initial setup.",
+      "status": "pending",
+      "dependencies": [
+        2
+      ],
+      "priority": "medium",
+      "details": "Design and implement an onboarding flow with:\n1. Welcome screens explaining the 12x concept and value proposition\n2. Permission request for Bluetooth access with clear explanation\n3. Device identification setup (for local device)\n4. Initial calendar view setup with empty month cards\n5. First-time user guidance overlays\n6. Skip options for returning users\n\nStore onboarding completion status to avoid showing it to returning users.",
+      "testStrategy": "Test the complete onboarding flow on first launch. Verify permission dialogs appear correctly. Test skipping onboarding on subsequent launches. Verify the app state is properly initialized after onboarding."
+    },
+    {
+      "id": 5,
+      "title": "Develop Bluetooth Discovery Engine",
+      "description": "Implement the Core Bluetooth functionality to scan for and discover other iOS devices running the 12x app in proximity.",
+      "status": "pending",
+      "dependencies": [
+        1
+      ],
+      "priority": "high",
+      "details": "Create a Bluetooth service using Core Bluetooth framework with:\n1. Background BLE scanner that runs periodically to discover nearby devices\n2. Custom service UUID for 12x app identification\n3. Advertisement data structure for device identification\n4. Battery-optimized scanning intervals based on time of day and motion\n5. Storage of discovered devices in the FamilyDevice model\n6. Background mode configuration for Bluetooth operation\n7. Handling of iOS Bluetooth state changes (on/off/unauthorized)\n\nImplement using CBCentralManager and CBPeripheralManager for full scanning and advertising capabilities.",
+      "testStrategy": "Test discovery between multiple physical devices. Verify background scanning works correctly. Measure battery impact and optimize scanning intervals. Test behavior when Bluetooth is turned off or permissions are revoked.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Core Bluetooth Manager Setup and State Handling",
+          "description": "Create the foundation Bluetooth manager class that initializes Core Bluetooth components and handles state changes",
+          "dependencies": [],
+          "details": "Implementation steps:\n1. Create a BluetoothDiscoveryManager singleton class\n2. Initialize CBCentralManager and CBPeripheralManager with appropriate delegates\n3. Define the custom service UUID for 12x app identification\n4. Implement state change handlers for Bluetooth (on/off/unauthorized)\n5. Create methods to check and request permissions\n6. Configure background modes in Info.plist for Bluetooth operation\n7. Implement a state machine to track the Bluetooth service status\n8. Add notification system for Bluetooth state changes\n\nTesting approach:\n- Unit test the state machine transitions\n- Test permission handling with different authorization scenarios\n- Verify background mode configuration is correctly set up\n- Test state change notifications are properly dispatched",
+          "status": "pending",
+          "parentTaskId": 5
+        },
+        {
+          "id": 2,
+          "title": "Implement Device Scanning and Advertising Logic",
+          "description": "Develop the core scanning and advertising functionality to discover nearby devices and make the device discoverable",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation steps:\n1. Implement CBCentralManager scanning methods with filters for the 12x service UUID\n2. Create the advertisement data structure with device identification information\n3. Implement CBPeripheralManager advertising methods to broadcast device presence\n4. Add connection handling for discovered peripherals to exchange additional data\n5. Implement disconnect and cleanup procedures\n6. Create a scanning cycle manager to control when scanning occurs\n7. Add timeout handling for scans and connections\n8. Implement data parsing for received advertisement packets\n\nTesting approach:\n- Test scanning with mock peripheral devices\n- Verify advertisement data structure is correctly formatted\n- Test connection establishment between two devices\n- Verify timeout handling works correctly\n- Test parsing of advertisement data from different device types",
+          "status": "pending",
+          "parentTaskId": 5
+        },
+        {
+          "id": 3,
+          "title": "Implement Battery Optimization and Device Storage",
+          "description": "Add battery optimization strategies for Bluetooth operations and integrate with the FamilyDevice model for persistent storage",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation steps:\n1. Implement adaptive scanning intervals based on time of day\n2. Integrate with device motion/activity recognition to adjust scanning frequency\n3. Create power-efficient scanning profiles (aggressive, normal, conservative)\n4. Implement the FamilyDevice model integration to store discovered devices\n5. Add persistence layer for discovered devices using Core Data or similar\n6. Create methods to update device information when rediscovered\n7. Implement last-seen timestamp tracking for discovered devices\n8. Add analytics to monitor battery impact of different scanning strategies\n9. Create background task scheduling for periodic scanning\n\nTesting approach:\n- Measure battery consumption in different scanning modes\n- Test persistence of discovered devices across app restarts\n- Verify adaptive scanning behavior changes based on conditions\n- Test background scanning activation at scheduled intervals\n- Verify device information is properly updated when rediscovered",
+          "status": "pending",
+          "parentTaskId": 5
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Create Family Device Management Interface",
+      "description": "Build the UI for discovering, naming, and managing family members' devices for synchronization.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        5
+      ],
+      "priority": "medium",
+      "details": "Implement a device management interface that:\n1. Displays discovered devices running 12x\n2. Allows naming devices with family member names\n3. Shows connection status and last sync time\n4. Provides options to forget/remove devices\n5. Indicates the local device\n6. Stores device associations in the FamilyDevice model\n7. Handles the case when new devices are discovered\n\nDesign the interface to be user-friendly and focus on family member names rather than technical identifiers.",
+      "testStrategy": "Test device discovery, naming, and management with multiple devices. Verify persistence of device names across app restarts. Test edge cases like duplicate names and removing devices."
+    },
+    {
+      "id": 7,
+      "title": "Implement Bluetooth Connection and Data Exchange",
+      "description": "Develop the system for establishing Bluetooth connections between devices and exchanging calendar data securely.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        5
+      ],
+      "priority": "high",
+      "details": "Create a connection manager and data exchange protocol that:\n1. Establishes secure connections between discovered devices\n2. Implements a JSON-based protocol for data transfer\n3. Handles serialization/deserialization of Core Data models\n4. Implements incremental syncing to minimize data transfer\n5. Includes error handling and retry logic\n6. Logs connection and transfer statistics to SyncLog\n7. Implements Bluetooth encryption plus application-layer verification\n8. Handles connection timeouts and interruptions gracefully\n\nOptimize for reliability and minimal data transfer to preserve battery life.",
+      "testStrategy": "Test data exchange between multiple devices. Verify correct serialization and deserialization. Test connection reliability under various conditions (distance, interference). Measure data transfer efficiency and optimize.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Bluetooth Connection Manager",
+          "description": "Create a BluetoothConnectionManager class that handles device discovery, connection establishment, and connection state management with proper security measures.",
+          "dependencies": [],
+          "details": "Implementation details:\n1. Create a BluetoothConnectionManager class that implements CoreBluetooth protocols (CBCentralManagerDelegate, CBPeripheralDelegate)\n2. Implement device discovery functionality with filtering for compatible devices\n3. Create methods for establishing secure connections with discovered devices\n4. Implement connection state management (connecting, connected, disconnected, failed)\n5. Add Bluetooth encryption and application-layer verification\n6. Implement connection timeout handling with configurable timeouts\n7. Add graceful disconnection and reconnection logic\n8. Create a delegate protocol to notify other components about connection events\n\nTesting approach:\n- Unit test the state management logic with mocked Bluetooth objects\n- Integration test with actual devices to verify connection establishment\n- Test timeout scenarios by simulating connection delays\n- Verify security implementation with connection attempts between authorized and unauthorized devices",
+          "status": "pending",
+          "parentTaskId": 7
+        },
+        {
+          "id": 2,
+          "title": "Develop Data Exchange Protocol and Serialization",
+          "description": "Create a JSON-based protocol for data exchange and implement serialization/deserialization between Core Data models and the transfer format.",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation details:\n1. Design a JSON schema for calendar data exchange that supports incremental updates\n2. Create a DataExchangeProtocol class that defines message types (e.g., sync request, data chunk, acknowledgment)\n3. Implement serialization from Core Data models to JSON format\n4. Implement deserialization from JSON to Core Data models\n5. Add data validation to ensure integrity during transfer\n6. Create a chunking mechanism to handle large data sets\n7. Implement protocol versioning to support future changes\n8. Add data compression to minimize transfer size\n\nTesting approach:\n- Unit test serialization/deserialization with various calendar data models\n- Test edge cases like empty data sets and maximum-sized calendar entries\n- Verify data integrity is maintained through the serialization process\n- Benchmark compression ratios and processing overhead\n- Test protocol versioning with simulated version mismatches",
+          "status": "pending",
+          "parentTaskId": 7
+        },
+        {
+          "id": 3,
+          "title": "Implement Sync Engine with Error Handling and Logging",
+          "description": "Create a SyncEngine that orchestrates incremental data synchronization with comprehensive error handling, retry logic, and detailed logging.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation details:\n1. Create a SyncEngine class that coordinates the sync process using the connection manager and data exchange protocol\n2. Implement incremental sync logic that identifies and transfers only changed data\n3. Add conflict resolution strategies for simultaneous changes\n4. Implement comprehensive error handling for various failure scenarios\n5. Add retry logic with exponential backoff for failed transfers\n6. Create a SyncLog system to record detailed statistics (connection duration, data transferred, success/failure)\n7. Implement battery-aware optimizations (batch transfers, connection management)\n8. Add a sync queue to manage multiple pending sync operations\n\nTesting approach:\n- Unit test the incremental sync logic with various change scenarios\n- Test error recovery by simulating connection drops and data corruption\n- Verify retry logic works correctly with different error conditions\n- Test conflict resolution with simultaneous changes on multiple devices\n- Analyze logs to ensure all required metrics are captured\n- Perform battery usage testing to verify optimizations are effective",
+          "status": "pending",
+          "parentTaskId": 7
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Build Conflict Resolution and Sync Engine",
+      "description": "Implement the algorithms for merging conflicting edits from different devices while preserving all family members' input.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        7
+      ],
+      "priority": "high",
+      "details": "Create a synchronization engine with:\n1. Three-way merge algorithm for handling concurrent edits\n2. Timestamp-based conflict detection\n3. Edit preservation policy that never deletes information during conflicts\n4. Chronological merging of edit histories\n5. Prioritization rules for conflicting fields\n6. Automatic resolution for most conflicts\n7. Logging of all sync activities and conflict resolutions\n8. Notification system for completed syncs\n\nEnsure the system is robust against partial syncs and interrupted connections.",
+      "testStrategy": "Create comprehensive test cases for various conflict scenarios. Verify that no data is lost during conflict resolution. Test with simulated network interruptions and partial syncs. Verify edit history accurately reflects all changes.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Core Sync Engine with Timestamp-based Conflict Detection",
+          "description": "Build the foundation of the sync engine with timestamp-based conflict detection and the three-way merge algorithm for handling concurrent edits.",
+          "dependencies": [],
+          "details": "Implementation details:\n1. Create a SyncEngine class that manages the synchronization process between devices\n2. Implement timestamp tracking for all data objects to detect when changes occurred\n3. Develop conflict detection logic that identifies when the same data was modified on multiple devices\n4. Build the three-way merge algorithm that compares:\n   - The common ancestor version (base)\n   - Local version (modified by current device)\n   - Remote version (modified by another device)\n5. Implement basic synchronization flow:\n   - Fetch remote changes\n   - Detect conflicts using timestamps\n   - Apply non-conflicting changes automatically\n   - Flag conflicting changes for resolution\n6. Add error handling for network interruptions and partial syncs\n7. Create unit tests for:\n   - Timestamp comparison logic\n   - Conflict detection with various scenarios\n   - Three-way merge with non-conflicting changes\n   - Recovery from interrupted syncs",
+          "status": "pending",
+          "parentTaskId": 8
+        },
+        {
+          "id": 2,
+          "title": "Develop Conflict Resolution Policies and Prioritization Rules",
+          "description": "Implement the conflict resolution strategies that preserve all family members' edits and apply prioritization rules for conflicting fields.",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation details:\n1. Extend the SyncEngine with ConflictResolver component\n2. Implement the edit preservation policy ensuring no information is deleted during conflicts:\n   - For text fields: concatenate conflicting values with attribution\n   - For list items: merge all items from both versions\n   - For structured data: preserve all fields from both versions\n3. Create field-specific resolution strategies based on data types:\n   - Dates: use latest timestamp unless explicitly modified\n   - Numbers: provide options for sum, average, or latest value\n   - Boolean values: implement OR/AND logic based on context\n4. Develop prioritization rules for specific fields:\n   - Define field importance hierarchy\n   - Create user preference settings for resolution strategies\n   - Implement override capabilities for designated family admins\n5. Build automatic resolution logic for common conflict patterns\n6. Add manual resolution UI hooks for complex conflicts\n7. Test with:\n   - Simulated concurrent edits across multiple fields\n   - Edge cases with partially conflicting data\n   - Verification that no user data is lost during merges",
+          "status": "pending",
+          "parentTaskId": 8
+        },
+        {
+          "id": 3,
+          "title": "Implement Chronological History Merging and Sync Activity Logging",
+          "description": "Create the system for merging edit histories chronologically and develop comprehensive logging and notification for sync activities.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation details:\n1. Design a data structure for storing edit history with:\n   - Timestamps for each change\n   - User identification\n   - Device information\n   - Before/after values\n2. Implement chronological merging of edit histories:\n   - Sort all edits by timestamp across devices\n   - Handle edits with identical timestamps\n   - Maintain causal relationships between dependent edits\n3. Create a SyncLogger component that records:\n   - All sync attempts (successful and failed)\n   - Conflicts detected and how they were resolved\n   - Performance metrics and timing information\n   - Error conditions and recovery actions\n4. Implement the notification system for completed syncs:\n   - Push notifications for mobile devices\n   - In-app notifications for active users\n   - Email summaries for major conflicts or sync issues\n   - Custom notification preferences per user\n5. Add a sync dashboard for viewing:\n   - Recent sync activity\n   - Pending conflicts requiring attention\n   - Sync health metrics\n6. Test with:\n   - Complex multi-device sync scenarios\n   - Verification of history correctness after merges\n   - Notification delivery across platforms\n   - Log analysis for troubleshooting capabilities",
+          "status": "pending",
+          "parentTaskId": 8
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Implement History Log and Visualization",
+      "description": "Create the interface for viewing the chronological edit history of events, showing how plans evolved over time.",
+      "status": "pending",
+      "dependencies": [
+        1,
+        3,
+        8
+      ],
+      "priority": "medium",
+      "details": "Build a history visualization interface that:\n1. Displays a chronological list of edits grouped by month\n2. Shows who made each change (family member name)\n3. Highlights what changed in each edit (title, location, date)\n4. Provides filtering options by family member or time period\n5. Uses clear visual design to show the evolution of events\n6. Handles the display of conflict resolutions\n7. Integrates with the EditHistory model\n\nFocus on making the history easy to understand for non-technical users.",
+      "testStrategy": "Test history display with various edit scenarios. Verify filtering works correctly. Test with large history datasets for performance. Ensure the UI clearly communicates what changed in each edit."
+    },
+    {
+      "id": 10,
+      "title": "Develop Debug and Diagnostics View",
+      "description": "Create a technical interface showing detailed insights into Bluetooth connectivity, sync status, and data exchange processes.",
+      "status": "pending",
+      "dependencies": [
+        5,
+        7,
+        8
+      ],
+      "priority": "low",
+      "details": "Implement a hidden developer menu that provides:\n1. Real-time logs of Bluetooth discovery and connection attempts\n2. Data transfer statistics (bytes sent/received, success rates)\n3. Sync conflict resolution details\n4. Device connection history and quality metrics\n5. Battery usage statistics related to Bluetooth operations\n6. Options to force sync or clear sync history\n7. Detailed error logs and diagnostic information\n8. Export functionality for logs\n\nMake this view accessible through a hidden gesture or developer setting.",
+      "testStrategy": "Verify all diagnostic information is accurate. Test log export functionality. Ensure the interface provides useful troubleshooting information. Test that the view is properly hidden from regular users but accessible when needed."
+    }
+  ],
+  "metadata": {
+    "projectName": "12x Family Event Scheduler",
+    "totalTasks": 10,
+    "sourceFile": "12x-family-event-scheduler-prd.txt",
+    "generatedAt": "2023-11-10"
+  }
+}

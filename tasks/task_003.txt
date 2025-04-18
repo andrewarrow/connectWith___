@@ -1,0 +1,21 @@
+# Task ID: 3
+# Title: Build Event Creation and Editing Interface
+# Status: pending
+# Dependencies: 1, 2
+# Priority: high
+# Description: Develop the interface for creating and editing event details on the monthly cards, including title, location, and date fields.
+# Details:
+Create a modal edit interface that appears when a month card is tapped, containing:
+1. Title input field with appropriate validation
+2. Location input field
+3. Date picker limited to the selected month
+4. Preview of how the card will look with changes
+5. Confirmation and cancel buttons
+6. Logic to save changes to Core Data
+7. Code to update the EditHistory when changes are made
+8. Device identifier tracking for edit attribution
+
+Ensure the interface is intuitive and follows iOS design guidelines.
+
+# Test Strategy:
+Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation.

@@ -1,0 +1,20 @@
+# Task ID: 6
+# Title: Create Family Device Management Interface
+# Status: pending
+# Dependencies: 1, 5
+# Priority: medium
+# Description: Build the UI for discovering, naming, and managing family members' devices for synchronization.
+# Details:
+Implement a device management interface that:
+1. Displays discovered devices running 12x
+2. Allows naming devices with family member names
+3. Shows connection status and last sync time
+4. Provides options to forget/remove devices
+5. Indicates the local device
+6. Stores device associations in the FamilyDevice model
+7. Handles the case when new devices are discovered
+
+Design the interface to be user-friendly and focus on family member names rather than technical identifiers.
+
+# Test Strategy:
+Test device discovery, naming, and management with multiple devices. Verify persistence of device names across app restarts. Test edge cases like duplicate names and removing devices.
