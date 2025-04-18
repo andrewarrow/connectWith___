@@ -13,6 +13,89 @@ public protocol DataRepository {
     func delete(_ entity: Entity) throws
 }
 
+// MARK: - RepositoryError
+public enum RepositoryError: Error {
+    case invalidEntity
+    case saveFailed(Error)
+    case fetchFailed(Error)
+    case deleteFailed(Error)
+    case transactionFailed(Error)
+    case entityNotFound
+    case invalidData
+    
+    var localizedDescription: String {
+        switch self {
+        case .invalidEntity:
+            return "Invalid entity provided"
+        case .saveFailed(let error):
+            return "Failed to save entity: \(error.localizedDescription)"
+        case .fetchFailed(let error):
+            return "Failed to fetch entity: \(error.localizedDescription)"
+        case .deleteFailed(let error):
+            return "Failed to delete entity: \(error.localizedDescription)"
+        case .transactionFailed(let error):
+            return "Transaction failed: \(error.localizedDescription)"
+        case .entityNotFound:
+            return "Entity not found"
+        case .invalidData:
+            return "Invalid data provided"
+        }
+    }
+}
+
+// MARK: - TransactionCoordinator
+public class TransactionCoordinator {
+    private let context: NSManagedObjectContext
+    
+    public init(context: NSManagedObjectContext) {
+        self.context = context
+    }
+    
+    /// Executes a block of code within a transaction
+    /// - Parameter block: The block of code to execute
+    /// - Throws: RepositoryError if the transaction fails
+    public func performTransaction(_ block: () throws -> Void) throws {
+        // Start transaction
+        context.performAndWait {
+            do {
+                // Execute the block
+                try block()
+                
+                // Commit if context has changes
+                if context.hasChanges {
+                    try context.save()
+                }
+            } catch {
+                // Rollback in case of error
+                context.rollback()
+                print("Transaction rolled back: \(error.localizedDescription)")
+                throw RepositoryError.transactionFailed(error)
+            }
+        }
+    }
+    
+    /// Executes a block of code within a transaction asynchronously
+    /// - Parameters:
+    ///   - block: The block of code to execute
+    ///   - completion: Completion handler with optional error
+    public func performAsyncTransaction(_ block: @escaping () throws -> Void, completion: @escaping (Error?) -> Void) {
+        context.perform {
+            do {
+                try block()
+                
+                if self.context.hasChanges {
+                    try self.context.save()
+                }
+                completion(nil)
+            } catch {
+                self.context.rollback()
+                print("Async transaction rolled back: \(error.localizedDescription)")
+                completion(RepositoryError.transactionFailed(error))
+            }
+        }
+    }
+}
+
 // MARK: - Event Entity
 public class Event: NSManagedObject {
     // This class is used as a placeholder to avoid generating a full managed object class
@@ -195,6 +278,7 @@ extension SyncLog {
 // EventRepository
 public class EventRepository: DataRepository {
     private let context: NSManagedObjectContext
+    private lazy var transactionCoordinator = TransactionCoordinator(context: context)
     
     public init(context: NSManagedObjectContext) {
         self.context = context
@@ -233,13 +317,22 @@ public class EventRepository: DataRepository {
     
     public func save() throws {
         if context.hasChanges {
-            try context.save()
+            do {
+                try context.save()
+            } catch {
+                print("Error saving event context: \(error)")
+                throw RepositoryError.saveFailed(error)
+            }
         }
     }
     
     public func delete(_ entity: Event) throws {
         context.delete(entity)
-        try save()
+        do {
+            try save()
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
     }
     
     // MARK: - Custom Event Methods
@@ -280,11 +373,88 @@ public class EventRepository: DataRepository {
         
         return history
     }
+    
+    // Complex transactions
+    
+    /// Updates an event and records history in a single transaction
+    /// - Parameters:
+    ///   - event: The event to update
+    ///   - title: New title
+    ///   - location: New location
+    ///   - day: New day
+    /// - Returns: The edit history entry if successful
+    /// - Throws: RepositoryError if the transaction fails
+    public func updateEventWithTransaction(_ event: Event, title: String, location: String?, day: Int) throws -> EditHistory {
+        var history: EditHistory!
+        
+        try transactionCoordinator.performTransaction {
+            // Create history
+            history = EditHistory.create(in: self.context, for: event)
+            history.recordChanges(
+                previousTitle: event.title,
+                newTitle: title,
+                previousLocation: event.location,
+                newLocation: location,
+                previousDay: Int(event.day),
+                newDay: day
+            )
+            
+            // Update event
+            event.title = title
+            event.location = location
+            event.day = Int16(day)
+            event.lastModifiedAt = Date()
+            event.lastModifiedBy = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        }
+        
+        return history
+    }
+    
+    /// Deletes an event and related history in a single transaction
+    /// - Parameter event: The event to delete
+    /// - Throws: RepositoryError if the transaction fails
+    public func deleteEventWithHistory(_ event: Event) throws {
+        try transactionCoordinator.performTransaction {
+            // Delete associated history entries
+            if let history = event.history {
+                for entry in history {
+                    self.context.delete(entry)
+                }
+            }
+            
+            // Delete the event
+            self.context.delete(event)
+        }
+    }
+    
+    /// Batch creates multiple events in a single transaction
+    /// - Parameter eventData: Array of tuples with event data (title, location, day, month)
+    /// - Returns: Array of created events
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchCreateEvents(_ eventData: [(title: String, location: String?, day: Int, month: Month)]) throws -> [Event] {
+        var createdEvents: [Event] = []
+        
+        try transactionCoordinator.performTransaction {
+            for data in eventData {
+                let event = Event.create(
+                    in: self.context,
+                    title: data.title,
+                    location: data.location,
+                    day: data.day,
+                    month: data.month
+                )
+                createdEvents.append(event)
+            }
+        }
+        
+        return createdEvents
+    }
 }
 
 // EditHistoryRepository
 public class EditHistoryRepository: DataRepository {
     private let context: NSManagedObjectContext
+    private lazy var transactionCoordinator = TransactionCoordinator(context: context)
     
     public init(context: NSManagedObjectContext) {
         self.context = context
@@ -323,13 +493,22 @@ public class EditHistoryRepository: DataRepository {
     
     public func save() throws {
         if context.hasChanges {
-            try context.save()
+            do {
+                try context.save()
+            } catch {
+                print("Error saving edit history context: \(error)")
+                throw RepositoryError.saveFailed(error)
+            }
         }
     }
     
     public func delete(_ entity: EditHistory) throws {
         context.delete(entity)
-        try save()
+        do {
+            try save()
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
     }
     
     // MARK: - Custom EditHistory Methods
@@ -349,11 +528,58 @@ public class EditHistoryRepository: DataRepository {
         let predicate = NSPredicate(format: "timestamp >= %@ AND timestamp <= %@", startDate as NSDate, endDate as NSDate)
         return fetch(predicate: predicate)
     }
+    
+    /// Bulk deletes history entries older than a specified date
+    /// - Parameter date: The cutoff date
+    /// - Returns: Number of entries deleted
+    /// - Throws: RepositoryError if the operation fails
+    public func deleteHistoryOlderThan(date: Date) throws -> Int {
+        let fetchRequest = EditHistory.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "timestamp < %@", date as NSDate)
+        
+        let batchDeleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest as! NSFetchRequest<NSFetchRequestResult>)
+        batchDeleteRequest.resultType = .resultTypeCount
+        
+        do {
+            let result = try context.execute(batchDeleteRequest) as? NSBatchDeleteResult
+            return result?.result as? Int ?? 0
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
+    }
+    
+    /// Creates multiple history entries for an event in a single transaction
+    /// - Parameters:
+    ///   - entries: Array of tuples with history data
+    ///   - event: The event the history entries belong to
+    /// - Returns: Array of created history entries
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchCreateHistory(entries: [(previousTitle: String?, newTitle: String?, previousLocation: String?, newLocation: String?, previousDay: Int?, newDay: Int?)], event: Event) throws -> [EditHistory] {
+        var createdEntries: [EditHistory] = []
+        
+        try transactionCoordinator.performTransaction {
+            for entry in entries {
+                let history = EditHistory.create(in: self.context, for: event)
+                history.recordChanges(
+                    previousTitle: entry.previousTitle,
+                    newTitle: entry.newTitle,
+                    previousLocation: entry.previousLocation,
+                    newLocation: entry.newLocation,
+                    previousDay: entry.previousDay,
+                    newDay: entry.newDay
+                )
+                createdEntries.append(history)
+            }
+        }
+        
+        return createdEntries
+    }
 }
 
 // FamilyDeviceRepository
 public class FamilyDeviceRepository: DataRepository {
     private let context: NSManagedObjectContext
+    private lazy var transactionCoordinator = TransactionCoordinator(context: context)
     
     public init(context: NSManagedObjectContext) {
         self.context = context
@@ -392,13 +618,22 @@ public class FamilyDeviceRepository: DataRepository {
     
     public func save() throws {
         if context.hasChanges {
-            try context.save()
+            do {
+                try context.save()
+            } catch {
+                print("Error saving family device context: \(error)")
+                throw RepositoryError.saveFailed(error)
+            }
         }
     }
     
     public func delete(_ entity: FamilyDevice) throws {
         context.delete(entity)
-        try save()
+        do {
+            try save()
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
     }
     
     // MARK: - Custom FamilyDevice Methods
@@ -437,11 +672,58 @@ public class FamilyDeviceRepository: DataRepository {
         device.customName = name
         try? save()
     }
+    
+    /// Registers multiple devices in a single transaction
+    /// - Parameter devices: Array of tuples with device data
+    /// - Returns: Array of created devices
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchRegisterDevices(_ devices: [(bluetoothIdentifier: String, customName: String?, isLocalDevice: Bool)]) throws -> [FamilyDevice] {
+        var createdDevices: [FamilyDevice] = []
+        
+        try transactionCoordinator.performTransaction {
+            for deviceData in devices {
+                let device = FamilyDevice.create(
+                    in: self.context,
+                    bluetoothIdentifier: deviceData.bluetoothIdentifier,
+                    customName: deviceData.customName,
+                    isLocalDevice: deviceData.isLocalDevice
+                )
+                createdDevices.append(device)
+            }
+        }
+        
+        return createdDevices
+    }
+    
+    /// Deletes multiple devices in a single transaction
+    /// - Parameter devices: Array of devices to delete
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchDeleteDevices(_ devices: [FamilyDevice]) throws {
+        try transactionCoordinator.performTransaction {
+            for device in devices {
+                self.context.delete(device)
+            }
+        }
+    }
+    
+    /// Updates sync timestamps for multiple devices in a single transaction
+    /// - Parameter devices: Array of devices to update
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchUpdateSyncTimestamps(_ devices: [FamilyDevice]) throws {
+        let now = Date()
+        
+        try transactionCoordinator.performTransaction {
+            for device in devices {
+                device.lastSyncTimestamp = now
+            }
+        }
+    }
 }
 
 // SyncLogRepository
 public class SyncLogRepository: DataRepository {
     private let context: NSManagedObjectContext
+    private lazy var transactionCoordinator = TransactionCoordinator(context: context)
     
     public init(context: NSManagedObjectContext) {
         self.context = context
@@ -480,13 +762,22 @@ public class SyncLogRepository: DataRepository {
     
     public func save() throws {
         if context.hasChanges {
-            try context.save()
+            do {
+                try context.save()
+            } catch {
+                print("Error saving sync log context: \(error)")
+                throw RepositoryError.saveFailed(error)
+            }
         }
     }
     
     public func delete(_ entity: SyncLog) throws {
         context.delete(entity)
-        try save()
+        do {
+            try save()
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
     }
     
     // MARK: - Custom SyncLog Methods
@@ -512,5 +803,47 @@ public class SyncLogRepository: DataRepository {
         log.resolutionMethod = resolutionMethod
         log.details = details
         try? save()
+    }
+    
+    /// Creates multiple sync logs in a single transaction
+    /// - Parameter logs: Array of tuples with log data
+    /// - Returns: Array of created logs
+    /// - Throws: RepositoryError if the transaction fails
+    public func batchCreateSyncLogs(_ logs: [(deviceId: String, deviceName: String?, eventsReceived: Int32, eventsSent: Int32, conflicts: Int32, resolutionMethod: String?, details: String?)]) throws -> [SyncLog] {
+        var createdLogs: [SyncLog] = []
+        
+        try transactionCoordinator.performTransaction {
+            for logData in logs {
+                let log = SyncLog.create(in: self.context, deviceId: logData.deviceId, deviceName: logData.deviceName)
+                log.eventsReceived = logData.eventsReceived
+                log.eventsSent = logData.eventsSent
+                log.conflicts = logData.conflicts
+                log.resolutionMethod = logData.resolutionMethod
+                log.details = logData.details
+                
+                createdLogs.append(log)
+            }
+        }
+        
+        return createdLogs
+    }
+    
+    /// Deletes logs older than a specified date
+    /// - Parameter date: The cutoff date
+    /// - Returns: Number of logs deleted
+    /// - Throws: RepositoryError if the operation fails
+    public func deleteLogsOlderThan(date: Date) throws -> Int {
+        let fetchRequest = SyncLog.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "timestamp < %@", date as NSDate)
+        
+        let batchDeleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest as! NSFetchRequest<NSFetchRequestResult>)
+        batchDeleteRequest.resultType = .resultTypeCount
+        
+        do {
+            let result = try context.execute(batchDeleteRequest) as? NSBatchDeleteResult
+            return result?.result as? Int ?? 0
+        } catch {
+            throw RepositoryError.deleteFailed(error)
+        }
     }
 }

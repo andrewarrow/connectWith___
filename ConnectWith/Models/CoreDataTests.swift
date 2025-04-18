@@ -19,6 +19,10 @@ class CoreDataTests {
         testFamilyDeviceRepository(context: context)
         testSyncLogRepository(context: context)
         
+        // Test transactions
+        testTransactionSupport(context: context)
+        testBatchOperations(context: context)
+        
         // Test DataManager facade
         testDataManagerFacade()
         
@@ -243,6 +247,136 @@ class CoreDataTests {
         assert(remainingLogs.isEmpty, "Log deletion failed")
         
         print("✅ SyncLogRepository tests passed")
+    }
+    
+    private static func testTransactionSupport(context: NSManagedObjectContext) {
+        print("Testing transaction support...")
+        
+        let eventRepo = EventRepository(context: context)
+        
+        // Test transaction that should succeed
+        do {
+            let event = eventRepo.createEvent(
+                title: "Transaction Test",
+                location: "Test Location",
+                day: 10,
+                month: .february
+            )
+            
+            let history = try eventRepo.updateEventWithTransaction(
+                event,
+                title: "Updated in Transaction",
+                location: "New Location",
+                day: 20
+            )
+            
+            // Verify both the event and history were updated in a single transaction
+            assert(event.title == "Updated in Transaction", "Transaction failed to update event")
+            assert(history.newTitle == "Updated in Transaction", "Transaction failed to update history")
+            assert(history.previousTitle == "Transaction Test", "Transaction failed to record previous title")
+            
+            // Test event deletion with history
+            try eventRepo.deleteEventWithHistory(event)
+            
+            // Verify the event was deleted
+            let fetchedEvent = eventRepo.fetchEventById(id: event.id)
+            assert(fetchedEvent == nil, "Transaction failed to delete event")
+            
+            print("✅ Transaction support tests passed")
+        } catch {
+            print("❌ Transaction test failed with error: \(error)")
+            assertionFailure("Transaction test failed")
+        }
+    }
+    
+    private static func testBatchOperations(context: NSManagedObjectContext) {
+        print("Testing batch operations...")
+        
+        // Test batch event creation
+        let eventRepo = EventRepository(context: context)
+        let deviceRepo = FamilyDeviceRepository(context: context)
+        let syncLogRepo = SyncLogRepository(context: context)
+        
+        do {
+            // Test batch event creation
+            let eventData = [
+                (title: "Batch Event 1", location: "Location 1", day: 5, month: Month.march),
+                (title: "Batch Event 2", location: "Location 2", day: 10, month: Month.april),
+                (title: "Batch Event 3", location: "Location 3", day: 15, month: Month.may)
+            ]
+            
+            let events = try eventRepo.batchCreateEvents(eventData)
+            assert(events.count == 3, "Batch event creation failed")
+            
+            // Verify events were created properly
+            let allEvents = eventRepo.fetch()
+            assert(allEvents.count == 3, "Batch event count mismatch")
+            
+            // Test batch device registration
+            let deviceData = [
+                (bluetoothIdentifier: "device-1", customName: "Mom's iPhone", isLocalDevice: false),
+                (bluetoothIdentifier: "device-2", customName: "Dad's iPhone", isLocalDevice: false),
+                (bluetoothIdentifier: "device-3", customName: "Kid's iPad", isLocalDevice: false)
+            ]
+            
+            let devices = try deviceRepo.batchRegisterDevices(deviceData)
+            assert(devices.count == 3, "Batch device registration failed")
+            
+            // Test batch update timestamps
+            try deviceRepo.batchUpdateSyncTimestamps(devices)
+            
+            // Verify all devices have timestamps
+            let allHaveTimestamps = devices.allSatisfy { $0.lastSyncTimestamp != nil }
+            assert(allHaveTimestamps, "Batch timestamp update failed")
+            
+            // Test batch sync log creation
+            let syncLogData = [
+                (deviceId: "device-1", deviceName: "Mom's iPhone", eventsReceived: 5, eventsSent: 3, conflicts: 1, resolutionMethod: "Auto merge", details: "Test details 1"),
+                (deviceId: "device-2", deviceName: "Dad's iPhone", eventsReceived: 2, eventsSent: 4, conflicts: 0, resolutionMethod: "No conflicts", details: "Test details 2"),
+                (deviceId: "device-3", deviceName: "Kid's iPad", eventsReceived: 3, eventsSent: 2, conflicts: 2, resolutionMethod: "Manual merge", details: "Test details 3")
+            ]
+            
+            let logs = try syncLogRepo.batchCreateSyncLogs(syncLogData)
+            assert(logs.count == 3, "Batch sync log creation failed")
+            
+            // Test bulk delete logs older than date
+            // Create an old log
+            let oldLog = syncLogRepo.createSyncLog(deviceId: "old-device", deviceName: "Old Device")
+            oldLog.timestamp = Calendar.current.date(byAdding: .day, value: -60, to: Date())!
+            try syncLogRepo.save()
+            
+            let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+            let deletedCount = try syncLogRepo.deleteLogsOlderThan(date: thirtyDaysAgo)
+            assert(deletedCount > 0, "Batch delete logs failed")
+            
+            // Test bulk delete devices
+            try deviceRepo.batchDeleteDevices([devices[0], devices[1]])
+            
+            // Verify two devices were deleted
+            let remainingDevices = deviceRepo.fetch()
+            assert(remainingDevices.count == 1, "Batch device deletion failed")
+            
+            // Test batch operation for edit history
+            if let event = events.first {
+                let historyRepo = EditHistoryRepository(context: context)
+                let historyEntries = [
+                    (previousTitle: "Original Title 1", newTitle: "New Title 1", previousLocation: "Original Location 1", newLocation: "New Location 1", previousDay: 1, newDay: 2),
+                    (previousTitle: "Original Title 2", newTitle: "New Title 2", previousLocation: "Original Location 2", newLocation: "New Location 2", previousDay: 3, newDay: 4)
+                ]
+                
+                let histories = try historyRepo.batchCreateHistory(entries: historyEntries, event: event)
+                assert(histories.count == 2, "Batch history creation failed")
+                
+                // Test bulk delete history
+                let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date())!
+                let _ = try historyRepo.deleteHistoryOlderThan(date: twoWeeksAgo)
+            }
+            
+            print("✅ Batch operations tests passed")
+        } catch {
+            print("❌ Batch operations failed with error: \(error)")
+            assertionFailure("Batch operations test failed")
+        }
     }
     
     private static func testDataManagerFacade() {
