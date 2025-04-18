@@ -195,9 +195,18 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
         // Start background task to ensure we complete current operations
         startBackgroundTask()
         
-        // If allowed and in background, start low-power background scanning
+        // If Bluetooth is permitted, set up adaptive background scanning
         if permissionGranted {
+            // Stop any current scanning
+            stopScanning()
+            
+            // Schedule periodic background scanning with battery optimization
+            schedulePeriodicBackgroundScanning()
+            
+            // Start an immediate scan
             startBackgroundScanning()
+            
+            Logger.bluetooth.info("Background mode: started adaptive Bluetooth scanning")
         }
     }
     
@@ -300,11 +309,14 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
         }
     }
     
-    /// Starts low-power background scanning for nearby devices
+    /// Starts low-power background scanning for nearby devices with battery optimization
     private func startBackgroundScanning() {
         guard permissionGranted, centralManager?.state == .poweredOn else { return }
         
-        Logger.bluetooth.info("Starting background scanning")
+        // Optimize scanning parameters based on device state
+        optimizeScanningForBatteryAndContext()
+        
+        Logger.bluetooth.info("Starting background scanning with \(currentScanningProfile.rawValue) profile")
         
         // In background mode, we only scan for our specific service to save battery
         let scanOptions: [String: Any] = [
@@ -313,20 +325,47 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
         
         // Only scan for our specific service in background
         centralManager?.scanForPeripherals(withServices: [BluetoothDiscoveryManager.serviceUUID], options: scanOptions)
+        isScanning = true
         
-        // Use a conservative scan duration in background
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            self?.centralManager?.stopScan()
-            self?.isScanning = false
+        // Use scan duration based on the current profile
+        let scanDuration: TimeInterval
+        
+        switch currentScanningProfile {
+        case .aggressive:
+            scanDuration = 5.0
+        case .normal:
+            scanDuration = 3.0
+        case .conservative:
+            scanDuration = 2.0
+        }
+        
+        // End scan after the determined duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + scanDuration) { [weak self] in
+            guard let self = self else { return }
             
-            // If we're still in background, schedule another scan after a longer interval
-            if UIApplication.shared.applicationState == .background {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 300.0) { [weak self] in
-                    if UIApplication.shared.applicationState == .background {
-                        self?.startBackgroundScanning()
-                    }
+            self.centralManager?.stopScan()
+            self.isScanning = false
+            
+            // Log scan completion
+            Logger.bluetooth.info("Background scan completed")
+            
+            // If we discover any devices, update their database entries
+            if !self.nearbyDevices.isEmpty {
+                Logger.bluetooth.info("Found \(self.nearbyDevices.count) devices during background scan")
+                
+                // Get the last seen devices
+                let recentDevices = self.nearbyDevices.suffix(min(self.nearbyDevices.count, 5))
+                
+                // Log the most recently seen devices
+                for device in recentDevices {
+                    let name = device.peripheral.name ?? "Unknown"
+                    let id = device.peripheral.identifier.uuidString
+                    Logger.bluetooth.info("Recent device: \(name) (\(id))")
                 }
             }
+            
+            // Continue with the scheduled scanning cycle
+            // The schedulePeriodicBackgroundScanning method handles when to run the next scan
         }
     }
     
@@ -479,12 +518,58 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
         isAdvertising = true
     }
     
-    /// Saves a discovered device to the database
+    /// Saves a discovered device to the database using FamilyDeviceRepository
     private func saveDeviceToDatabase(peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber) {
-        // Check if we already have a device with this identifier
+        // Use DataManager to handle the persistence
+        let dataManager = DataManager.shared
         let deviceId = peripheral.identifier.uuidString
-        let persistenceController = PersistenceController.shared
-        let context = persistenceController.container.viewContext
+        let deviceName = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        
+        // Check if this device has our service UUID
+        let hasCalendarService = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?.contains(BluetoothDiscoveryManager.serviceUUID) ?? false
+        
+        // Perform operations in background to avoid UI blocking
+        PersistenceController.shared.performBackgroundTask { context in
+            let familyDeviceRepository = FamilyDeviceRepository(context: context)
+            
+            // Check if device already exists
+            if let existingDevice = familyDeviceRepository.fetchDeviceByBluetoothIdentifier(identifier: deviceId) {
+                // Update last seen timestamp
+                existingDevice.lastSyncTimestamp = Date()
+                
+                // Update name if it has changed
+                if let name = deviceName, existingDevice.customName == nil || existingDevice.customName?.isEmpty == true {
+                    existingDevice.customName = name
+                }
+                
+                Logger.bluetooth.info("Updated existing device in database: \(existingDevice.customName ?? "Unknown") (\(deviceId))")
+            } else {
+                // Only store devices that have our service or have a name (potential family devices)
+                if hasCalendarService || deviceName != nil {
+                    // Create a new family device
+                    let newDevice = FamilyDevice.create(
+                        in: context,
+                        bluetoothIdentifier: deviceId,
+                        customName: deviceName,
+                        isLocalDevice: false
+                    )
+                    Logger.bluetooth.info("Saved new device to database: \(newDevice.customName ?? "Unknown") (\(deviceId))")
+                }
+            }
+            
+            // Save the changes
+            try? context.save()
+            
+            // If this device has our service, also create a BluetoothDevice entry for direct access
+            if hasCalendarService {
+                self.saveBluetoothDeviceInfo(peripheral: peripheral, advertisementData: advertisementData, rssi: rssi, context: context)
+            }
+        }
+    }
+    
+    /// Save detailed Bluetooth device information
+    private func saveBluetoothDeviceInfo(peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber, context: NSManagedObjectContext) {
+        let deviceId = peripheral.identifier.uuidString
         
         // Create fetch request
         let fetchRequest = BluetoothDevice.fetchRequest()
@@ -510,14 +595,21 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
             // Save changes
             try context.save()
             
-            Logger.bluetooth.info("Device saved to database: \(device.deviceName ?? "Unknown") (\(deviceId))")
+            Logger.bluetooth.info("BluetoothDevice saved to database: \(device.deviceName ?? "Unknown") (\(deviceId))")
         } catch {
-            Logger.bluetooth.error("Failed to save device to database: \(error.localizedDescription)")
+            Logger.bluetooth.error("Failed to save BluetoothDevice to database: \(error.localizedDescription)")
         }
     }
     
-    /// Retrieves devices from database that support 12x sync
-    func getFamilyDevicesFromDatabase() -> [BluetoothDevice] {
+    /// Retrieves family devices from database that support 12x sync
+    func getFamilyDevicesFromDatabase() -> [FamilyDevice] {
+        // Use DataManager to handle the persistence
+        let dataManager = DataManager.shared
+        return dataManager.getAllDevices()
+    }
+    
+    /// Retrieves detailed Bluetooth devices from database that support 12x sync
+    func getBluetoothDevicesFromDatabase() -> [BluetoothDevice] {
         let persistenceController = PersistenceController.shared
         let context = persistenceController.container.viewContext
         
@@ -530,42 +622,172 @@ class BluetoothDiscoveryManager: NSObject, ObservableObject {
             // Filter for devices that support our service
             return devices.filter { $0.supports12xSync }
         } catch {
-            Logger.bluetooth.error("Failed to fetch devices from database: \(error.localizedDescription)")
+            Logger.bluetooth.error("Failed to fetch bluetooth devices from database: \(error.localizedDescription)")
             return []
         }
     }
     
     /// Purges old devices from the database that haven't been seen in a long time
     func purgeOldDevices(olderThan days: Int = 30) {
-        let persistenceController = PersistenceController.shared
-        let context = persistenceController.container.viewContext
+        // Perform operations in background to avoid UI blocking
+        PersistenceController.shared.performBackgroundTask { context in
+            // Calculate cutoff date
+            let calendar = Calendar.current
+            guard let cutoffDate = calendar.date(byAdding: .day, value: -days, to: Date()) else {
+                return
+            }
+            
+            // First, purge old BluetoothDevice entries
+            let fetchRequest = BluetoothDevice.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "lastSeen < %@", cutoffDate as NSDate)
+            
+            do {
+                let oldDevices = try context.fetch(fetchRequest)
+                
+                // Delete old devices
+                for device in oldDevices {
+                    context.delete(device)
+                    Logger.bluetooth.info("Purged old BluetoothDevice: \(device.deviceName ?? "Unknown") (\(device.identifier))")
+                }
+                
+                // Save changes
+                if !oldDevices.isEmpty {
+                    try context.save()
+                    Logger.bluetooth.info("Purged \(oldDevices.count) old BluetoothDevice entries from database")
+                }
+            } catch {
+                Logger.bluetooth.error("Failed to purge old BluetoothDevice entries: \(error.localizedDescription)")
+            }
+            
+            // Next, purge old FamilyDevice entries that haven't been synced recently
+            let familyDeviceRepository = FamilyDeviceRepository(context: context)
+            let familyDevicePredicate = NSPredicate(format: "lastSyncTimestamp < %@ AND isLocalDevice == NO", cutoffDate as NSDate)
+            let oldFamilyDevices = familyDeviceRepository.fetch(predicate: familyDevicePredicate)
+            
+            // Only delete family devices that haven't been seen for a long time and aren't local
+            for device in oldFamilyDevices {
+                Logger.bluetooth.info("Purging old FamilyDevice: \(device.customName ?? "Unknown") (\(device.bluetoothIdentifier))")
+                try? familyDeviceRepository.delete(device)
+            }
+            
+            Logger.bluetooth.info("Database maintenance completed: purged old devices not seen since \(cutoffDate)")
+        }
+    }
+    
+    /// Optimizes the scanning profile based on current battery level, time of day, and motion status
+    func optimizeScanningForBatteryAndContext() {
+        // Check battery level
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let batteryLevel = UIDevice.current.batteryLevel
+        let batteryState = UIDevice.current.batteryState
         
-        // Calculate cutoff date
-        let calendar = Calendar.current
-        guard let cutoffDate = calendar.date(byAdding: .day, value: -days, to: Date()) else {
-            return
+        // Determine optimal profile
+        var newProfile = currentScanningProfile
+        
+        // If battery is critically low, or device is charging, adjust accordingly
+        if batteryLevel < 0.15 && batteryState != .charging {
+            // Very low battery, use conservative mode
+            newProfile = .conservative
+            Logger.bluetooth.info("Battery level critical (\(batteryLevel * 100)%), switching to conservative scanning")
+        } else if batteryState == .charging {
+            // Device is charging, can use more power
+            newProfile = .normal
+            Logger.bluetooth.info("Device is charging, using normal scanning")
+        } else {
+            // Consider time of day
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: Date())
+            
+            // Late night/early morning (11PM - 7AM)
+            if hour >= 23 || hour < 7 {
+                newProfile = .conservative
+                Logger.bluetooth.info("Night time hours, using conservative scanning")
+            } else {
+                // Business hours - base on motion and battery
+                if isMotionActive {
+                    // Device is moving, likely in use
+                    newProfile = batteryLevel > 0.3 ? .aggressive : .normal
+                    Logger.bluetooth.info("Device in motion, using \(newProfile.rawValue) scanning")
+                } else {
+                    // Device is stationary
+                    newProfile = .normal
+                    Logger.bluetooth.info("Device stationary, using normal scanning")
+                }
+            }
         }
         
-        // Create fetch request for old devices
-        let fetchRequest = BluetoothDevice.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "lastSeen < %@", cutoffDate as NSDate)
+        // Apply the new profile if it's different
+        if newProfile != currentScanningProfile {
+            Logger.bluetooth.info("Scanning profile changed from \(currentScanningProfile.rawValue) to \(newProfile.rawValue)")
+            currentScanningProfile = newProfile
+        }
+    }
+    
+    /// Schedule periodic background scanning based on adaptive intervals
+    func schedulePeriodicBackgroundScanning() {
+        // Cancel any existing background task
+        if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
         
-        do {
-            let oldDevices = try context.fetch(fetchRequest)
+        // Start a new background task
+        backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
+            // End task when time expires
+            guard let self = self else { return }
+            if self.backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(self.backgroundTask)
+                self.backgroundTask = .invalid
+            }
+        }
+        
+        // Optimize scanning parameters
+        optimizeScanningForBatteryAndContext()
+        
+        // Use adaptive scanning intervals based on the current profile
+        let scanInterval: TimeInterval
+        
+        switch currentScanningProfile {
+        case .aggressive:
+            scanInterval = 60 // 1 minute
+        case .normal:
+            scanInterval = 300 // 5 minutes
+        case .conservative:
+            scanInterval = 900 // 15 minutes
+        }
+        
+        // Schedule the next scan
+        DispatchQueue.main.asyncAfter(deadline: .now() + scanInterval) { [weak self] in
+            guard let self = self else { return }
             
-            // Delete old devices
-            for device in oldDevices {
-                context.delete(device)
-                Logger.bluetooth.info("Purged old device: \(device.deviceName ?? "Unknown") (\(device.identifier))")
+            // Only continue if app is in background
+            if UIApplication.shared.applicationState == .background {
+                // Start a scan
+                self.startBackgroundScanning()
+                
+                // Schedule the next scan
+                self.schedulePeriodicBackgroundScanning()
             }
             
-            // Save changes
-            if !oldDevices.isEmpty {
-                try context.save()
-                Logger.bluetooth.info("Purged \(oldDevices.count) old devices from database")
+            // End the current background task
+            if self.backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(self.backgroundTask)
+                self.backgroundTask = .invalid
             }
-        } catch {
-            Logger.bluetooth.error("Failed to purge old devices: \(error.localizedDescription)")
+        }
+        
+        // Perform database maintenance occasionally (every ~24 hours)
+        // We use a UserDefaults flag to track when we last did maintenance
+        let lastMaintenanceDate = UserDefaults.standard.object(forKey: "LastDatabaseMaintenanceDate") as? Date ?? Date(timeIntervalSince1970: 0)
+        
+        if Date().timeIntervalSince(lastMaintenanceDate) > 86400 { // 24 hours
+            // Perform database maintenance
+            purgeOldDevices()
+            
+            // Update the last maintenance date
+            UserDefaults.standard.set(Date(), forKey: "LastDatabaseMaintenanceDate")
+            
+            Logger.bluetooth.info("Performed scheduled database maintenance")
         }
     }
 }
