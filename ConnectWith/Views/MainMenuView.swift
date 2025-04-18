@@ -419,6 +419,7 @@ extension NSNumber {
 
 struct MainMenuView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @EnvironmentObject private var guidanceManager: GuidanceManager
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
     @State private var showDeviceList = false

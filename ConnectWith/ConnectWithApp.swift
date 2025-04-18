@@ -800,6 +800,7 @@ struct FamilyCalendarApp: App {
     @State private var isShowingSplash = true
     @StateObject private var bluetoothManager = BluetoothManager()
     @StateObject private var calendarStore = CalendarStore.shared
+    @StateObject private var guidanceManager = GuidanceManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var body: some Scene {
@@ -815,6 +816,15 @@ struct FamilyCalendarApp: App {
             }
             .environmentObject(bluetoothManager)
             .environmentObject(calendarStore)
+            .environmentObject(guidanceManager)
+            .onChange(of: hasCompletedOnboarding) { newValue in
+                // If onboarding just completed, prepare for showing guidance
+                // on the first view of the FamilyCalendarView
+                if newValue == true {
+                    // Reset the guidance flag to ensure it shows
+                    UserDefaults.standard.removeObject(forKey: "hasSeenCalendarGuidance")
+                }
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 # Task ID: 4
 # Title: Implement Onboarding Flow
-# Status: pending
+# Status: completed
 # Dependencies: 2
 # Priority: medium
 # Description: Create the app's initial onboarding experience including welcome screens, Bluetooth permission requests, and initial setup.
@@ -46,7 +46,7 @@ Implementation details:
 7. Connect permission and device setup flows to the welcome screens from subtask 1
 8. Testing approach: Test permission requests on different OS versions, verify proper handling of permission grants/denials, and ensure device identification data is properly saved
 
-## 3. Implement Calendar View Setup and First-time User Guidance [pending]
+## 3. Implement Calendar View Setup and First-time User Guidance [completed - 2025-04-18]
 ### Dependencies: 4.1, 4.2
 ### Description: Create the initial calendar view with empty month cards and implement first-time user guidance overlays
 ### Details:

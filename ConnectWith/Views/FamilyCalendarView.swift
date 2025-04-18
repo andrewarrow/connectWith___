@@ -7,6 +7,7 @@ struct FamilyCalendarView: View {
     @State private var isEditingEvent = false
     @State private var selectedMonth: Month?
     @State private var selectedEvent: Event?
+    @StateObject private var guidanceManager = GuidanceManager.shared
     
     @FetchRequest(
         entity: Event.entity(),
@@ -148,6 +149,16 @@ struct FamilyCalendarView: View {
                     .environment(\.managedObjectContext, viewContext)
                 }
             }
+            // Overlay the guidance if it's visible
+            .overlay {
+                if guidanceManager.showCalendarGuidance {
+                    GuidanceOverlayView(isVisible: $guidanceManager.showCalendarGuidance)
+                }
+            }
+        }
+        .onAppear {
+            // Check if we should show the guidance when the view appears
+            guidanceManager.checkAndShowCalendarGuidance()
         }
     }
     
