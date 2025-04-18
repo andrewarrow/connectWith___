@@ -509,7 +509,7 @@ struct MainMenuView: View {
                 }
             }
             .sheet(isPresented: $showCalendarView) {
-                // Create the calendar view here directly to avoid scope issues
+                // Use the new monthly cards CalendarViewContainer
                 CalendarViewContainer()
             }
             #if DEBUG

@@ -19,7 +19,7 @@ Implement using UICollectionView or SwiftUI equivalent with custom card views.
 Create UI tests for card rendering, scrolling behavior, and tap interactions. Test accessibility features including VoiceOver and Dynamic Type. Verify color contrast meets accessibility standards.
 
 # Subtasks:
-## 1. Set up scrollable collection view structure for monthly cards [pending]
+## 1. Set up scrollable collection view structure for monthly cards [completed]
 ### Dependencies: None
 ### Description: Create the foundational scrollable view that will house the 12 monthly event cards, establishing the core layout and navigation structure.
 ### Details:
