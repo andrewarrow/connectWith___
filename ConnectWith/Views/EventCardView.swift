@@ -1,109 +1,161 @@
 import SwiftUI
 
 struct EventCardView: View {
-    @Binding var event: Event
-    @State private var isEditing = false
-    @State private var title: String
-    @State private var location: String
-    @State private var day: Int
+    var event: Event?
+    var month: Month
+    var onTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
     
-    init(event: Binding<Event>) {
-        self._event = event
-        self._title = State(initialValue: event.wrappedValue.title)
-        self._location = State(initialValue: event.wrappedValue.location)
-        self._day = State(initialValue: event.wrappedValue.day)
+    // Get the appropriate month color
+    private var cardColor: Color {
+        Color(month.color)
+    }
+    
+    // Determine if there's an event or if we need to show empty state
+    private var isEmpty: Bool {
+        return event == nil
     }
     
     var body: some View {
-        VStack {
+        Button(action: onTap) {
             ZStack {
+                // Card background with shadow
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(event.month.color))
-                    .shadow(radius: 5)
+                    .fill(cardColor)
+                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                 
-                VStack(alignment: .leading, spacing: 10) {
+                // Card content
+                VStack(alignment: .leading, spacing: 12) {
+                    // Header with month name
                     HStack {
-                        Text(event.month.rawValue)
+                        Text(month.rawValue)
                             .font(.headline)
+                            .fontWeight(.semibold)
                             .foregroundColor(.white)
+                        
                         Spacer()
-                        Button(action: {
-                            isEditing.toggle()
-                        }) {
-                            Image(systemName: isEditing ? "checkmark.circle" : "pencil.circle")
+                        
+                        // If there's an event, show a checkmark
+                        if !isEmpty {
+                            Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.white)
-                                .font(.title2)
+                                .font(.title3)
                         }
                     }
                     
-                    if isEditing {
-                        editingView
+                    if isEmpty {
+                        emptyStateView
                     } else {
-                        displayView
+                        populatedStateView
                     }
                 }
-                .padding()
+                .padding(16)
             }
-            .frame(height: 180)
-            .padding(.horizontal)
+            .frame(height: 220)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(month.rawValue) card with \(isEmpty ? "no event" : "event: \(event!.title)")")
+            .accessibilityHint("Tap to edit this month's event")
+            .accessibilityAddTraits(.isButton)
         }
+        .buttonStyle(PlainButtonStyle())
     }
     
-    var displayView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(event.title)
-                .font(.title)
-                .foregroundColor(.white)
-                .lineLimit(1)
+    // View when no event exists for the month
+    private var emptyStateView: some View {
+        VStack(alignment: .center, spacing: 16) {
+            Spacer()
             
-            Text(event.location)
-                .font(.body)
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 40))
                 .foregroundColor(.white.opacity(0.9))
-                .lineLimit(1)
+            
+            Text("No Event Planned")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+            
+            Text("Tap to add an event for \(month.rawValue)")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+                .multilineTextAlignment(.center)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // View when an event exists for the month
+    private var populatedStateView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Event title with prominent display
+            Text(event?.title ?? "")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .lineLimit(2)
             
             Spacer()
             
-            HStack {
-                Text("Day: \(event.day)")
-                    .font(.headline)
-                    .foregroundColor(.white)
+            // Event details with smaller text
+            VStack(alignment: .leading, spacing: 8) {
+                // Location with icon
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    Text(event?.location ?? "")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
                 
-                Spacer()
+                // Date with icon
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    if let day = event?.day {
+                        Text("Day \(day)")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.9))
+                    } else {
+                        Text("No date set")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                }
             }
-        }
-    }
-    
-    var editingView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Title", text: $title)
-                .font(.title3)
-                .foregroundColor(.white)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(8)
-                .padding(5)
-                .onChange(of: title) { newValue in
-                    event.title = newValue
-                }
-            
-            TextField("Location", text: $location)
-                .font(.body)
-                .foregroundColor(.white)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(8)
-                .padding(5)
-                .onChange(of: location) { newValue in
-                    event.location = newValue
-                }
-            
-            Stepper("Day: \(day)", value: $day, in: 1...31)
-                .foregroundColor(.white)
-                .onChange(of: day) { newValue in
-                    event.day = newValue
-                }
         }
     }
 }
 
-#Preview {
-    EventCardView(event: .constant(Event(title: "Birthday Party", location: "Home", day: 15, month: .april)))
+// Preview
+struct EventCardView_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            // Event card with event
+            EventCardView(
+                event: Event.create(
+                    in: PersistenceController.shared.container.viewContext,
+                    title: "Family Reunion",
+                    location: "Grandma's House",
+                    day: 15,
+                    month: .july
+                ),
+                month: .july,
+                onTap: {}
+            )
+            
+            // Empty card
+            EventCardView(
+                event: nil,
+                month: .december,
+                onTap: {}
+            )
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .previewLayout(.sizeThatFits)
+    }
 }

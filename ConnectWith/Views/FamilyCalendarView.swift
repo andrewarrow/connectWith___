@@ -1,226 +1,420 @@
 import SwiftUI
+import CoreData
 
-// Define Event model directly in this file
-struct Event: Identifiable {
-    var id = UUID()
-    var title: String
-    var location: String
-    var day: Int
-    var month: Month
+struct FamilyCalendarView: View {
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var currentMonthIndex = Calendar.current.component(.month, from: Date()) - 1 // 0-based index
+    @State private var isEditingEvent = false
+    @State private var selectedMonth: Month?
+    @State private var selectedEvent: Event?
     
-    static let defaultEvents = Month.allCases.map { month in
-        Event(title: "Event", location: "Home", day: 1, month: month)
-    }
-}
-
-enum Month: String, CaseIterable, Identifiable {
-    case january = "January"
-    case february = "February"
-    case march = "March"
-    case april = "April"
-    case may = "May"
-    case june = "June"
-    case july = "July"
-    case august = "August"
-    case september = "September"
-    case october = "October"
-    case november = "November"
-    case december = "December"
+    @FetchRequest(
+        entity: Event.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \Event.month, ascending: true)],
+        animation: .default)
+    private var events: FetchedResults<Event>
     
-    var id: String { self.rawValue }
-    
-    var color: String {
-        switch self {
-        case .january: return "card.january"
-        case .february: return "card.february"
-        case .march: return "card.march"
-        case .april: return "card.april"
-        case .may: return "card.may"
-        case .june: return "card.june"
-        case .july: return "card.july"
-        case .august: return "card.august"
-        case .september: return "card.september"
-        case .october: return "card.october"
-        case .november: return "card.november"
-        case .december: return "card.december"
+    // Get the current month's events organized by month
+    private var eventsByMonth: [Month: Event] {
+        var result: [Month: Event] = [:]
+        
+        for event in events {
+            // Only include the most recently modified event for each month
+            if let month = event.monthEnum {
+                if let existingEvent = result[month] {
+                    // Keep the more recently modified event
+                    if event.lastModifiedAt > existingEvent.lastModifiedAt {
+                        result[month] = event
+                    }
+                } else {
+                    result[month] = event
+                }
+            }
         }
-    }
-}
-
-struct EventCardView: View {
-    @Binding var event: Event
-    @State private var isEditing = false
-    @State private var title: String
-    @State private var location: String
-    @State private var day: Int
-    
-    init(event: Binding<Event>) {
-        self._event = event
-        self._title = State(initialValue: event.wrappedValue.title)
-        self._location = State(initialValue: event.wrappedValue.location)
-        self._day = State(initialValue: event.wrappedValue.day)
+        
+        return result
     }
     
     var body: some View {
-        VStack {
+        NavigationView {
             ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(event.month.color))
-                    .shadow(radius: 5)
+                Color(.systemBackground)
+                    .ignoresSafeArea()
                 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(event.month.rawValue)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Button(action: {
-                            isEditing.toggle()
-                        }) {
-                            Image(systemName: isEditing ? "checkmark.circle" : "pencil.circle")
-                                .foregroundColor(.white)
-                                .font(.title2)
+                VStack(spacing: 16) {
+                    // Month carousel
+                    TabView(selection: $currentMonthIndex) {
+                        ForEach(0..<12) { index in
+                            let month = Month.allCases[index]
+                            MonthCardContainer(
+                                month: month,
+                                event: eventsByMonth[month],
+                                onTap: {
+                                    selectedMonth = month
+                                    selectedEvent = eventsByMonth[month]
+                                    isEditingEvent = true
+                                }
+                            )
+                            .tag(index)
                         }
                     }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .automatic))
+                    .frame(height: 260)
                     
-                    if isEditing {
-                        editingView
-                    } else {
-                        displayView
+                    // Month selector with text and buttons
+                    HStack(spacing: 24) {
+                        Button(action: {
+                            withAnimation {
+                                currentMonthIndex = max(0, currentMonthIndex - 1)
+                            }
+                        }) {
+                            Image(systemName: "chevron.left")
+                                .font(.title3)
+                                .foregroundColor(currentMonthIndex > 0 ? .blue : .gray)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(22)
+                        }
+                        .disabled(currentMonthIndex <= 0)
+                        
+                        Text(Month.allCases[currentMonthIndex].rawValue)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .frame(minWidth: 120)
+                        
+                        Button(action: {
+                            withAnimation {
+                                currentMonthIndex = min(11, currentMonthIndex + 1)
+                            }
+                        }) {
+                            Image(systemName: "chevron.right")
+                                .font(.title3)
+                                .foregroundColor(currentMonthIndex < 11 ? .blue : .gray)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(22)
+                        }
+                        .disabled(currentMonthIndex >= 11)
                     }
+                    .padding(.horizontal)
+                    
+                    // Month summary
+                    monthSummaryView
+                    
+                    Spacer()
                 }
-                .padding()
+                .padding(.top)
             }
-            .frame(height: 180)
+            .navigationTitle("Family Calendar")
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $isEditingEvent) {
+                if let month = selectedMonth {
+                    EventEditSheet(
+                        month: month,
+                        event: selectedEvent,
+                        onSave: { title, location, day in
+                            saveEvent(
+                                month: month,
+                                title: title,
+                                location: location,
+                                day: day,
+                                existingEvent: selectedEvent
+                            )
+                        },
+                        onDelete: {
+                            if let event = selectedEvent {
+                                deleteEvent(event)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+    
+    // View that shows a summary of the current month's event
+    private var monthSummaryView: some View {
+        let currentMonth = Month.allCases[currentMonthIndex]
+        let currentEvent = eventsByMonth[currentMonth]
+        
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Event Details")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                if let event = currentEvent {
+                    // Display event details
+                    DetailsRow(icon: "text.alignleft", title: "Event", value: event.title)
+                    
+                    if let location = event.location {
+                        DetailsRow(icon: "mappin.and.ellipse", title: "Location", value: location)
+                    }
+                    
+                    DetailsRow(icon: "calendar", title: "Date", value: "Day \(event.day)")
+                    
+                    Button(action: {
+                        selectedMonth = currentMonth
+                        selectedEvent = event
+                        isEditingEvent = true
+                    }) {
+                        Text("Edit Event")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                    }
+                    .padding(.top, 8)
+                } else {
+                    // Empty state
+                    HStack {
+                        Spacer()
+                        
+                        VStack(spacing: 12) {
+                            Image(systemName: "calendar.badge.plus")
+                                .font(.system(size: 32))
+                                .foregroundColor(.gray)
+                            
+                            Text("No event planned for \(currentMonth.rawValue)")
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.secondary)
+                            
+                            Button(action: {
+                                selectedMonth = currentMonth
+                                selectedEvent = nil
+                                isEditingEvent = true
+                            }) {
+                                Text("Add Event")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(width: 120)
+                                    .padding(.vertical, 12)
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 20)
+                }
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
             .padding(.horizontal)
         }
     }
     
-    var displayView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(event.title)
-                .font(.title)
-                .foregroundColor(.white)
-                .lineLimit(1)
+    // MARK: - Event CRUD Operations
+    
+    private func saveEvent(month: Month, title: String, location: String, day: Int, existingEvent: Event?) {
+        withAnimation {
+            if let event = existingEvent {
+                // Update existing event
+                event.title = title
+                event.location = location
+                event.day = Int16(day)
+                event.lastModifiedAt = Date()
+                // This should be replaced with actual device ID when available
+                event.lastModifiedBy = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+            } else {
+                // Create new event
+                let newEvent = Event.create(
+                    in: viewContext,
+                    title: title,
+                    location: location,
+                    day: day,
+                    month: month
+                )
+                // Create initial edit history
+                let history = EditHistory.create(in: viewContext, for: newEvent)
+                history.recordChanges(
+                    previousTitle: nil,
+                    newTitle: title,
+                    previousLocation: nil,
+                    newLocation: location,
+                    previousDay: nil,
+                    newDay: day
+                )
+            }
             
-            Text(event.location)
-                .font(.body)
-                .foregroundColor(.white.opacity(0.9))
-                .lineLimit(1)
-            
-            Spacer()
-            
-            HStack {
-                Text("Day: \(event.day)")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Spacer()
+            do {
+                try viewContext.save()
+            } catch {
+                // Replace this with real error handling
+                let nsError = error as NSError
+                print("Error saving context: \(nsError), \(nsError.userInfo)")
             }
         }
     }
     
-    var editingView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Title", text: $title)
-                .font(.title3)
-                .foregroundColor(.white)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(8)
-                .padding(5)
-                .onChange(of: title) { newValue in
-                    event.title = newValue
-                }
+    private func deleteEvent(_ event: Event) {
+        withAnimation {
+            viewContext.delete(event)
             
-            TextField("Location", text: $location)
-                .font(.body)
-                .foregroundColor(.white)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(8)
-                .padding(5)
-                .onChange(of: location) { newValue in
-                    event.location = newValue
-                }
-            
-            Stepper("Day: \(day)", value: $day, in: 1...31)
-                .foregroundColor(.white)
-                .onChange(of: day) { newValue in
-                    event.day = newValue
-                }
+            do {
+                try viewContext.save()
+            } catch {
+                // Replace this with real error handling
+                let nsError = error as NSError
+                print("Error deleting event: \(nsError), \(nsError.userInfo)")
+            }
         }
     }
 }
 
-struct CardFamilyCalendarView: View {
-    @State private var events = Event.defaultEvents
-    @State private var currentIndex: Int = 0
-    @Environment(\.presentationMode) private var presentationMode
+// MARK: - Supporting Views
+
+// Container for a single month's card
+struct MonthCardContainer: View {
+    let month: Month
+    let event: Event?
+    let onTap: () -> Void
     
     var body: some View {
-        ZStack {
-            Color(.systemBackground)
-                .ignoresSafeArea()
+        VStack {
+            EventCardView(
+                event: event,
+                month: month,
+                onTap: onTap
+            )
+            .padding(.horizontal)
+        }
+    }
+}
+
+// Details row helper view
+struct DetailsRow: View {
+    let icon: String
+    let title: String
+    let value: String
+    
+    var body: some View {
+        HStack(alignment: .top) {
+            Image(systemName: icon)
+                .foregroundColor(.blue)
+                .frame(width: 24)
             
-            VStack {
-                HStack {
-                    Button("Done") {
+            Text(title + ":")
+                .foregroundColor(.secondary)
+                .frame(width: 70, alignment: .leading)
+            
+            Text(value)
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+    }
+}
+
+// Event Edit Sheet
+struct EventEditSheet: View {
+    let month: Month
+    let event: Event?
+    let onSave: (String, String, Int) -> Void
+    let onDelete: () -> Void
+    
+    @Environment(\.presentationMode) private var presentationMode
+    @State private var title: String
+    @State private var location: String
+    @State private var day: Int
+    @State private var showDeleteConfirmation = false
+    
+    init(month: Month, event: Event?, onSave: @escaping (String, String, Int) -> Void, onDelete: @escaping () -> Void) {
+        self.month = month
+        self.event = event
+        self.onSave = onSave
+        self.onDelete = onDelete
+        
+        // Initialize state
+        _title = State(initialValue: event?.title ?? "")
+        _location = State(initialValue: event?.location ?? "")
+        _day = State(initialValue: Int(event?.day ?? 1))
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Event Details")) {
+                    TextField("Event Title", text: $title)
+                    TextField("Location", text: $location)
+                    
+                    Picker("Day", selection: $day) {
+                        ForEach(1...month.maxDays, id: \.self) { day in
+                            Text("\(day)").tag(day)
+                        }
+                    }
+                    .pickerStyle(WheelPickerStyle())
+                }
+                
+                if event != nil {
+                    Section {
+                        Button(action: {
+                            showDeleteConfirmation = true
+                        }) {
+                            HStack {
+                                Spacer()
+                                Text("Delete Event")
+                                    .foregroundColor(.red)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("\(event == nil ? "Add" : "Edit") \(month.rawValue) Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
                         presentationMode.wrappedValue.dismiss()
                     }
-                    .padding()
-                    
-                    Spacer()
                 }
                 
-                Text("Family Calendar")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("Swipe to browse your events")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom)
-                
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(events.indices), id: \.self) { index in
-                        EventCardView(event: $events[index])
-                            .tag(index)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(title, location, day)
+                        presentationMode.wrappedValue.dismiss()
                     }
+                    .disabled(title.isEmpty || location.isEmpty)
                 }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-                .frame(height: 240)
-                .padding(.vertical)
-                
-                Spacer()
-                
-                VStack(alignment: .leading) {
-                    Text("Current Event: \(events[currentIndex].month.rawValue)")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal)
-                    
-                    Divider()
-                    
-                    HStack {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Title: \(events[currentIndex].title)", systemImage: "pencil")
-                            Label("Location: \(events[currentIndex].location)", systemImage: "mappin.and.ellipse")
-                            Label("Date: \(events[currentIndex].day) \(events[currentIndex].month.rawValue)", systemImage: "calendar")
-                        }
-                        .padding()
-                        
-                        Spacer()
-                    }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.secondarySystemBackground))
-                )
-                .padding()
             }
+            .alert(isPresented: $showDeleteConfirmation) {
+                Alert(
+                    title: Text("Delete Event"),
+                    message: Text("Are you sure you want to delete this event? This action cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        onDelete()
+                        presentationMode.wrappedValue.dismiss()
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
+    }
+}
+
+// Extension to Month for convenience
+extension Month {
+    // Maximum days in each month (simplified)
+    var maxDays: Int {
+        switch self {
+        case .february: 
+            // Account for leap years, but since we don't track the year, use maximum
+            return 29
+        case .april, .june, .september, .november:
+            return 30
+        default:
+            return 31
         }
     }
 }
 
 #Preview {
-    CardFamilyCalendarView()
+    FamilyCalendarView()
+        .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
 }

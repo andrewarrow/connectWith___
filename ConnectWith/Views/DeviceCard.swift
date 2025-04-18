@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A direct fix for the contrast issues shown in the screenshot
+/// A card component for displaying a device
 struct DeviceCard: View {
     @Environment(\.colorScheme) var colorScheme
     

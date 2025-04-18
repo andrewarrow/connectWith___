@@ -509,8 +509,9 @@ struct MainMenuView: View {
                 }
             }
             .sheet(isPresented: $showCalendarView) {
-                // Use the new monthly cards CalendarViewContainer
-                CalendarViewContainer()
+                // Use our new FamilyCalendarView with monthly event cards
+                FamilyCalendarView()
+                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             }
             #if DEBUG
             .sheet(isPresented: $showDebugView) {
