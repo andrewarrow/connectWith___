@@ -100,10 +100,29 @@ struct EventEditView: View {
                 
                 // Preview section
                 if showPreview {
-                    Section(header: Text("Preview")
-                        .accessibilityAddTraits(.isHeader)) {
+                    Section(header: HStack {
+                        Text("Preview")
+                            .accessibilityAddTraits(.isHeader)
                         
-                        VStack(alignment: .center) {
+                        Spacer()
+                        
+                        // Toggle button to hide/show preview
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showPreview.toggle()
+                            }
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                        }) {
+                            Image(systemName: "eye.slash")
+                                .foregroundColor(.secondary)
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                        .accessibilityLabel("Hide preview")
+                    }) {
+                        VStack(alignment: .center, spacing: 8) {
+                            // Preview card
                             EventCardPreview(
                                 title: title,
                                 location: location,
@@ -111,10 +130,68 @@ struct EventEditView: View {
                                 month: month
                             )
                             .padding(.vertical, 8)
+                            
+                            // Validation status
+                            if let titleError = titleError {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.yellow)
+                                    Text(titleError)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(8)
+                            }
+                            
+                            if let locationError = locationError {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.yellow)
+                                    Text(locationError)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(8)
+                            }
+                            
+                            // Card information
+                            Text("This is how your event will look on the calendar")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 4)
                         }
                         .frame(maxWidth: .infinity)
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("Preview of the event card for \(month.rawValue)")
+                    }
+                } else {
+                    // Collapsed preview section
+                    Section {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showPreview.toggle()
+                            }
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                        }) {
+                            HStack {
+                                Image(systemName: "eye")
+                                    .foregroundColor(.blue)
+                                
+                                Text("Show Preview")
+                                    .foregroundColor(.blue)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 8)
+                        }
+                        .accessibilityLabel("Show preview")
                     }
                 }
                 
@@ -201,10 +278,15 @@ struct EventEditView: View {
     
     // Validate title field
     private func validateTitle(_ value: String) {
-        if value.isEmpty {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedValue.isEmpty {
             titleError = "Title is required"
-        } else if value.count > 50 {
+        } else if trimmedValue.count < 3 {
+            titleError = "Title must be at least 3 characters"
+        } else if trimmedValue.count > 50 {
             titleError = "Title must be 50 characters or less"
+        } else if !trimmedValue.first!.isLetter {
+            titleError = "Title must start with a letter"
         } else {
             titleError = nil
         }
@@ -212,13 +294,21 @@ struct EventEditView: View {
     
     // Validate location field
     private func validateLocation(_ value: String) {
-        if value.isEmpty {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedValue.isEmpty {
             locationError = "Location is required"
-        } else if value.count > 100 {
+        } else if trimmedValue.count < 3 {
+            locationError = "Location must be at least 3 characters"
+        } else if trimmedValue.count > 100 {
             locationError = "Location must be 100 characters or less"
         } else {
             locationError = nil
         }
+    }
+    
+    // Validate day selection for the current month
+    private func validateDay(_ day: Int) -> Bool {
+        return day > 0 && day <= month.maxDays
     }
     
     // Validate entire form
@@ -230,7 +320,11 @@ struct EventEditView: View {
     
     // Check if form is valid
     private func isFormValid() -> Bool {
-        return !title.isEmpty && !location.isEmpty && titleError == nil && locationError == nil
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmedTitle.isEmpty && !trimmedLocation.isEmpty && 
+               titleError == nil && locationError == nil && 
+               validateDay(day)
     }
     
     // MARK: - Event CRUD Operations
@@ -313,6 +407,10 @@ struct EventCardPreview: View {
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.sizeCategory) var sizeCategory
     
+    // States for animation
+    @State private var isAnimating = false
+    @State private var showValidation = false
+    
     private var displayTitle: String {
         return title.isEmpty ? "[Title]" : title
     }
@@ -326,13 +424,44 @@ struct EventCardPreview: View {
         Color(month.color)
     }
     
+    // Validation status
+    private var isValid: Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return !trimmedTitle.isEmpty && trimmedTitle.count >= 3 && 
+               trimmedTitle.count <= 50 && trimmedTitle.first?.isLetter == true &&
+               !trimmedLocation.isEmpty && trimmedLocation.count >= 3 &&
+               trimmedLocation.count <= 100 && day > 0 && day <= month.maxDays
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header with month name
-            Text(month.rawValue)
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
+            // Header with month name and validation status
+            HStack {
+                Text(month.rawValue)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                if showValidation {
+                    Image(systemName: isValid ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(isValid ? .green : .yellow)
+                        .imageScale(.large)
+                        .opacity(isAnimating ? 1.0 : 0.5)
+                        .animation(Animation.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isAnimating)
+                        .onAppear {
+                            if !isValid {
+                                isAnimating = true
+                            }
+                        }
+                        .onChange(of: isValid) { newValue in
+                            isAnimating = !newValue
+                        }
+                }
+            }
             
             // Event title with prominent display
             Text(displayTitle)
@@ -341,6 +470,7 @@ struct EventCardPreview: View {
                 .foregroundColor(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
+                .padding(.top, 4)
             
             Spacer()
             
@@ -372,6 +502,30 @@ struct EventCardPreview: View {
         .background(cardColor)
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(showValidation ? (isValid ? Color.green.opacity(0.4) : Color.yellow.opacity(0.6)) : Color.clear, lineWidth: 2)
+        )
+        .onAppear {
+            // Show validation status after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showValidation = true
+                }
+            }
+        }
+        // Update validation when any input changes
+        .onChange(of: title) { _ in updateValidation() }
+        .onChange(of: location) { _ in updateValidation() }
+        .onChange(of: day) { _ in updateValidation() }
+    }
+    
+    // Function to update validation with animation
+    private func updateValidation() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            // This triggers the onChange of isValid
+            let _ = isValid
+        }
     }
 }
 
@@ -390,6 +544,15 @@ struct EventEditView_Previews: PreviewProvider {
             month: .july
         )
         
+        // Create an invalid sample event to showcase validation
+        let invalidSampleEvent = Event.create(
+            in: context,
+            title: "A",  // Too short - will trigger validation error
+            location: "H", // Too short - will trigger validation error
+            day: 15,
+            month: .february
+        )
+        
         return Group {
             // Preview add new event
             EventEditView(month: .march, event: nil)
@@ -401,6 +564,44 @@ struct EventEditView_Previews: PreviewProvider {
                 .environment(\.managedObjectContext, context)
                 .previewDisplayName("Edit Existing Event")
                 .preferredColorScheme(.dark)
+            
+            // Preview with validation errors
+            EventEditView(month: .february, event: invalidSampleEvent)
+                .environment(\.managedObjectContext, context)
+                .previewDisplayName("With Validation Errors")
         }
+    }
+}
+
+// Preview for just the card
+struct EventCardPreview_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            // Valid event preview
+            EventCardPreview(
+                title: "Family Reunion",
+                location: "Grandma's House",
+                day: 15,
+                month: .july
+            )
+            
+            // Invalid event preview
+            EventCardPreview(
+                title: "A",
+                location: "B",
+                day: 35, // Invalid day
+                month: .february
+            )
+            
+            // Empty event preview
+            EventCardPreview(
+                title: "",
+                location: "",
+                day: 1,
+                month: .december
+            )
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
 }
