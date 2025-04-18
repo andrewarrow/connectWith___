@@ -9,10 +9,10 @@ struct NearbyDevicesView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothDiscoveryManager
     
     @State private var isRefreshing = false
-    @State private var showConnectionAlert = false
-    @State private var selectedDevice: BluetoothDevice?
     @State private var showRenameSheet = false
     @State private var newDeviceName = ""
+    @State private var selectedDevice: BluetoothDevice?
+    @State private var navigateToDeviceDetail = false
     
     @FetchRequest(
         entity: NSEntityDescription.entity(forEntityName: "BluetoothDevice", in: PersistenceController.shared.container.viewContext)!,
@@ -52,24 +52,22 @@ struct NearbyDevicesView: View {
                     startScan()
                 }
             }
-            .alert("Connect to Device", isPresented: $showConnectionAlert) {
-                Button("Connect") {
-                    if let device = selectedDevice,
-                       let uuid = UUID(uuidString: device.identifier) {
-                        connectToDevice(with: uuid)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                if let device = selectedDevice {
-                    Text("Would you like to connect to \(device.deviceName ?? "this device")?")
-                } else {
-                    Text("Would you like to connect to this device?")
-                }
-            }
             .sheet(isPresented: $showRenameSheet) {
                 renameDeviceSheet
             }
+            .background(
+                NavigationLink(
+                    destination: selectedDevice.map { device in
+                        DeviceDetailView(
+                            device: device,
+                            isLocalDevice: isLocalDevice(device)
+                        )
+                    },
+                    isActive: $navigateToDeviceDetail
+                ) {
+                    EmptyView()
+                }
+            )
         }
     }
     
@@ -120,7 +118,7 @@ struct NearbyDevicesView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             selectedDevice = device
-                            showConnectionAlert = true
+                            navigateToDeviceDetail = true
                         }
                         .contextMenu {
                             Button(action: {
@@ -137,6 +135,13 @@ struct NearbyDevicesView: View {
                                 }
                             }) {
                                 Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+                            }
+                            
+                            Button(action: {
+                                selectedDevice = device
+                                navigateToDeviceDetail = true
+                            }) {
+                                Label("View Details", systemImage: "info.circle")
                             }
                         }
                 }
@@ -244,6 +249,7 @@ struct NearbyDevicesView: View {
         for device in bluetoothManager.nearbyDevices {
             if device.peripheral.identifier == uuid {
                 bluetoothManager.connectToDevice(device.peripheral)
+                Logger.bluetooth.info("Connection requested with device: \(uuid)")
                 break
             }
         }
@@ -260,6 +266,14 @@ struct NearbyDevicesView: View {
                     deviceToRename.deviceName = newName
                     try context.save()
                     Logger.bluetooth.info("Renamed device \(device.identifier) to \(newName)")
+                    
+                    // Also update the FamilyDevice entry if it exists
+                    let familyDeviceRepository = FamilyDeviceRepository(context: context)
+                    if let familyDevice = familyDeviceRepository.fetchDeviceByBluetoothIdentifier(identifier: device.identifier) {
+                        familyDevice.customName = newName
+                        try context.save()
+                        Logger.bluetooth.info("Updated FamilyDevice name to \(newName)")
+                    }
                 }
             } catch {
                 Logger.bluetooth.error("Failed to rename device: \(error.localizedDescription)")
