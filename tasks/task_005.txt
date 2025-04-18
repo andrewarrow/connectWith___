@@ -20,7 +20,7 @@ Implement using CBCentralManager and CBPeripheralManager for full scanning and a
 Test discovery between multiple physical devices. Verify background scanning works correctly. Measure battery impact and optimize scanning intervals. Test behavior when Bluetooth is turned off or permissions are revoked.
 
 # Subtasks:
-## 1. Implement Core Bluetooth Manager Setup and State Handling [pending]
+## 1. Implement Core Bluetooth Manager Setup and State Handling [complete]
 ### Dependencies: None
 ### Description: Create the foundation Bluetooth manager class that initializes Core Bluetooth components and handles state changes
 ### Details:
