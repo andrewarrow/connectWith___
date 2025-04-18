@@ -1,6 +1,6 @@
 # Task ID: 1
 # Title: Setup Core Data Models and Database
-# Status: in-progress
+# Status: completed
 # Dependencies: None
 # Priority: high
 # Description: Implement the local SQLite database with Core Data models for Event, EditHistory, FamilyDevice, and SyncLog entities as specified in the PRD.
@@ -34,7 +34,7 @@ Write unit tests for each model and CRUD operation. Verify data persistence acro
 8. ✅ Implement database initialization and migration handling
 9. ✅ Test the Core Data stack initialization and verify data protection is enabled
 
-## 2. Implement CRUD Operations for All Entities [pending]
+## 2. Implement CRUD Operations for All Entities [completed]
 ### Dependencies: 1.1
 ### Description: Create a comprehensive data access layer with CRUD operations for all entities
 ### Details:
@@ -64,7 +64,7 @@ Write unit tests for each model and CRUD operation. Verify data persistence acro
    - Verify constraints and validation
    - Test edge cases and error conditions
 
-## 3. Create Data Access Facade and Encryption Verification [pending]
+## 3. Create Data Access Facade and Encryption Verification [completed]
 ### Dependencies: 1.1, 1.2
 ### Description: Implement a unified data access facade and ensure proper data encryption
 ### Details:

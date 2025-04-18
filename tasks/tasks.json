@@ -4,7 +4,7 @@
       "id": 1,
       "title": "Setup Core Data Models and Database",
       "description": "Implement the local SQLite database with Core Data models for Event, EditHistory, FamilyDevice, and SyncLog entities as specified in the PRD.",
-      "status": "in-progress",
+      "status": "completed",
       "dependencies": [],
       "priority": "high",
       "details": "Create a Core Data stack with the following models:\n1. Event: UUID, month (1-12), title, location, day (1-31), createdAt, lastModifiedAt, lastModifiedBy, color\n2. EditHistory: UUID, eventId, deviceId, deviceName, previousTitle, newTitle, previousLocation, newLocation, previousDay, newDay, timestamp\n3. FamilyDevice: UUID, bluetoothIdentifier, customName, lastSyncTimestamp, isLocalDevice\n4. SyncLog: UUID, timestamp, deviceId, deviceName, eventsReceived, eventsSent, conflicts, resolutionMethod, details\n\nImplement CRUD operations for all entities and ensure data encryption using iOS data protection.",
@@ -27,7 +27,7 @@
             1
           ],
           "details": "1. Create a DataRepository protocol defining generic CRUD operations\n2. Implement EventRepository:\n   - Create/add new events\n   - Retrieve events (by UUID, month, or all)\n   - Update event properties\n   - Delete events\n   - Query events by various parameters\n3. Implement EditHistoryRepository:\n   - Record edit history entries\n   - Retrieve history for specific events\n   - Query history by device or timeframe\n4. Implement FamilyDeviceRepository:\n   - Register devices\n   - Update device information\n   - Get local device\n   - List all family devices\n5. Implement SyncLogRepository:\n   - Create sync log entries\n   - Retrieve logs by timeframe or device\n6. Add transaction support for operations that modify multiple entities\n7. Implement error handling and recovery mechanisms\n8. Create unit tests for each repository:\n   - Test all CRUD operations\n   - Verify constraints and validation\n   - Test edge cases and error conditions",
-          "status": "pending",
+          "status": "completed",
           "parentTaskId": 1
         },
         {
@@ -39,7 +39,7 @@
             2
           ],
           "details": "1. Create a DataManager facade class that:\n   - Provides a simplified interface to all repositories\n   - Handles complex operations involving multiple entities\n   - Manages data consistency across entities\n2. Implement data encryption verification:\n   - Add methods to verify encryption status\n   - Create a utility to check if data protection is active\n   - Add logging for encryption-related events\n3. Implement data migration utilities:\n   - Version migration support\n   - Data integrity checks\n4. Add performance optimizations:\n   - Implement caching for frequently accessed data\n   - Add batch operations for better performance\n5. Create integration tests:\n   - Test the complete data flow through the facade\n   - Verify data consistency across repositories\n   - Test encryption by examining the database file\n   - Measure and optimize performance\n6. Document the API:\n   - Create usage examples\n   - Document thread safety considerations\n   - Add inline documentation for all public methods",
-          "status": "pending",
+          "status": "completed",
           "parentTaskId": 1
         }
       ]
