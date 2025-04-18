@@ -18,3 +18,63 @@ Focus on making the history easy to understand for non-technical users.
 
 # Test Strategy:
 Test history display with various edit scenarios. Verify filtering works correctly. Test with large history datasets for performance. Ensure the UI clearly communicates what changed in each edit.
+
+# Subtasks:
+## 1. Implement Core Data Integration for Edit History [pending]
+### Dependencies: None
+### Description: Create the data layer for retrieving and managing edit history records from Core Data, including fetching, sorting, and grouping functionality.
+### Details:
+Implementation steps:
+1. Create a HistoryManager class to handle Core Data operations for EditHistory entities
+2. Implement methods to fetch all history records sorted by date
+3. Add functionality to group history records by month
+4. Create data structures to represent history items for the UI layer
+5. Implement methods to retrieve edit details (what changed, who made the change)
+6. Add support for filtering history by family member or date range
+7. Create unit tests for the HistoryManager class
+
+Testing approach:
+- Write unit tests for each Core Data fetch and filter operation
+- Create sample EditHistory records to verify grouping logic
+- Test edge cases like empty history or multiple edits on the same day
+
+## 2. Build History List UI with Grouping and Filtering [pending]
+### Dependencies: 9.1
+### Description: Develop the user interface components for displaying the chronological list of edits with month-based grouping and implement filtering controls.
+### Details:
+Implementation steps:
+1. Create a HistoryListView as the main container for the history visualization
+2. Implement a section-based list with month headers using List or UITableView
+3. Design and implement history item cells showing edit date, family member name, and a summary of changes
+4. Add a filter control panel with options for filtering by family member
+5. Implement a date range picker for time period filtering
+6. Connect the UI to the HistoryManager from subtask 1
+7. Ensure the list updates when filters are applied
+8. Add empty state handling when no history items match filters
+
+Testing approach:
+- Create UI tests to verify list rendering with sample data
+- Test filter interactions to ensure proper filtering
+- Verify month grouping headers display correctly
+- Test responsiveness on different device sizes
+
+## 3. Implement Change Highlighting and Detail View [pending]
+### Dependencies: 9.1, 9.2
+### Description: Create the detailed view of individual edit history items with visual highlighting of changes and implement conflict resolution display.
+### Details:
+Implementation steps:
+1. Design and implement a HistoryDetailView to show complete information about an edit
+2. Create visual components to highlight what changed in each edit (title, location, date)
+3. Implement before/after comparison for changed fields
+4. Add special visual treatment for conflict resolutions
+5. Design and implement animations or transitions to show evolution between states
+6. Create a navigation flow from the history list to the detail view
+7. Ensure the detail view is accessible and easy to understand
+8. Add options to navigate between consecutive edits
+
+Testing approach:
+- Test the detail view with various types of edits (title changes, date changes, etc.)
+- Verify conflict resolution display works correctly
+- Test accessibility features
+- Ensure navigation between list and detail views works smoothly
+

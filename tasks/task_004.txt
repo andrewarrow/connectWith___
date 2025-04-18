@@ -17,3 +17,47 @@ Store onboarding completion status to avoid showing it to returning users.
 
 # Test Strategy:
 Test the complete onboarding flow on first launch. Verify permission dialogs appear correctly. Test skipping onboarding on subsequent launches. Verify the app state is properly initialized after onboarding.
+
+# Subtasks:
+## 1. Implement Welcome and Introduction Screens [pending]
+### Dependencies: None
+### Description: Create the initial welcome screens that introduce the app concept, value proposition, and prepare users for the onboarding process
+### Details:
+Implementation details:
+1. Create a welcome screen component with app logo, title, and tagline
+2. Design and implement 2-3 introduction slides explaining the 12x concept and value proposition
+3. Add navigation controls (next/back buttons, progress indicators)
+4. Implement skip option for returning users
+5. Create a persistent storage utility to save onboarding completion status
+6. Add logic to check if user has completed onboarding before and bypass if needed
+7. Testing approach: Verify all screens display correctly, navigation works as expected, and returning users can skip the flow
+
+## 2. Implement Permission Requests and Device Setup [pending]
+### Dependencies: 4.1
+### Description: Handle Bluetooth permission requests with clear explanations and implement the device identification setup process
+### Details:
+Implementation details:
+1. Create a permission request screen explaining why Bluetooth access is needed
+2. Implement the Bluetooth permission request logic with proper OS-specific handling
+3. Add fallback screens for permission denial with instructions to enable manually
+4. Create device identification setup screen for local device
+5. Implement device naming and identification storage functionality
+6. Add validation for device setup inputs
+7. Connect permission and device setup flows to the welcome screens from subtask 1
+8. Testing approach: Test permission requests on different OS versions, verify proper handling of permission grants/denials, and ensure device identification data is properly saved
+
+## 3. Implement Calendar View Setup and First-time User Guidance [pending]
+### Dependencies: 4.1, 4.2
+### Description: Create the initial calendar view with empty month cards and implement first-time user guidance overlays
+### Details:
+Implementation details:
+1. Design and implement the initial calendar view with empty month cards
+2. Create placeholder states for the calendar when no data is available
+3. Implement first-time user guidance overlays using tooltips or coach marks
+4. Design overlay content explaining key app features and navigation
+5. Create a sequence for the guidance overlays to highlight different UI elements
+6. Implement overlay dismissal and completion tracking
+7. Connect the calendar view and guidance to the end of the permission/device setup flow
+8. Add final onboarding completion logic to mark the entire process as finished
+9. Testing approach: Verify calendar view displays correctly, guidance overlays appear in the right sequence, and onboarding completion is properly tracked for returning users
+

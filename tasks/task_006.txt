@@ -18,3 +18,65 @@ Design the interface to be user-friendly and focus on family member names rather
 
 # Test Strategy:
 Test device discovery, naming, and management with multiple devices. Verify persistence of device names across app restarts. Test edge cases like duplicate names and removing devices.
+
+# Subtasks:
+## 1. Implement Device Discovery and Display UI [pending]
+### Dependencies: None
+### Description: Create the UI components to discover and display devices running 12x in the family network
+### Details:
+Implementation steps:
+1. Create a DeviceDiscoveryManager class that uses Bonjour/Network Service Discovery to find devices running the 12x app
+2. Implement a DeviceListViewController with a UITableView to display discovered devices
+3. Design custom UITableViewCell for device entries with appropriate layout for device information
+4. Add a refresh control to allow manual scanning for devices
+5. Implement local device detection and highlight it in the UI
+6. Add loading indicators during device discovery process
+7. Create placeholder UI elements for connection status and sync time (to be implemented in subtask 2)
+
+Testing approach:
+- Test device discovery on local network with multiple devices
+- Verify UI updates when devices appear/disappear
+- Test refresh functionality
+- Confirm local device is properly identified
+
+## 2. Implement Device Naming and Status Indicators [pending]
+### Dependencies: 6.1
+### Description: Add functionality to name devices with family member names and display connection status information
+### Details:
+Implementation steps:
+1. Create a DeviceDetailViewController that appears when selecting a device
+2. Add text field for entering/editing family member names for devices
+3. Implement connection status indicators showing online/offline state
+4. Add last sync time display with appropriate formatting
+5. Create a ConnectionManager class to monitor device connectivity
+6. Implement status update mechanism to refresh connection status periodically
+7. Design UI indicators for connection status (green for connected, red for disconnected)
+8. Add validation for family member names (prevent duplicates, empty names)
+
+Testing approach:
+- Test name assignment and persistence
+- Verify status indicators update correctly when devices connect/disconnect
+- Test edge cases like long names, special characters
+- Verify sync time displays correctly in different formats
+
+## 3. Implement Core Data Integration and Device Management [pending]
+### Dependencies: 6.1, 6.2
+### Description: Create the Core Data model for device storage and implement device management features
+### Details:
+Implementation steps:
+1. Create FamilyDevice Core Data model with properties for device identifier, name, last sync time, and connection status
+2. Implement CoreDataManager to handle CRUD operations for FamilyDevice entities
+3. Add functionality to forget/remove devices with confirmation dialog
+4. Create a DeviceSyncManager to track and update last sync times
+5. Implement automatic device association when new devices are discovered
+6. Add migration logic for existing devices when app updates
+7. Create a notification system for when device status changes
+8. Implement data persistence between app launches
+
+Testing approach:
+- Test adding, removing, and updating devices in Core Data
+- Verify device associations persist after app restart
+- Test device removal flow and confirm proper cleanup
+- Verify new device discovery and automatic association
+- Test edge cases like data migration and recovery from corruption
+

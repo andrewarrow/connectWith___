@@ -147,7 +147,41 @@
       ],
       "priority": "medium",
       "details": "Design and implement an onboarding flow with:\n1. Welcome screens explaining the 12x concept and value proposition\n2. Permission request for Bluetooth access with clear explanation\n3. Device identification setup (for local device)\n4. Initial calendar view setup with empty month cards\n5. First-time user guidance overlays\n6. Skip options for returning users\n\nStore onboarding completion status to avoid showing it to returning users.",
-      "testStrategy": "Test the complete onboarding flow on first launch. Verify permission dialogs appear correctly. Test skipping onboarding on subsequent launches. Verify the app state is properly initialized after onboarding."
+      "testStrategy": "Test the complete onboarding flow on first launch. Verify permission dialogs appear correctly. Test skipping onboarding on subsequent launches. Verify the app state is properly initialized after onboarding.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Welcome and Introduction Screens",
+          "description": "Create the initial welcome screens that introduce the app concept, value proposition, and prepare users for the onboarding process",
+          "dependencies": [],
+          "details": "Implementation details:\n1. Create a welcome screen component with app logo, title, and tagline\n2. Design and implement 2-3 introduction slides explaining the 12x concept and value proposition\n3. Add navigation controls (next/back buttons, progress indicators)\n4. Implement skip option for returning users\n5. Create a persistent storage utility to save onboarding completion status\n6. Add logic to check if user has completed onboarding before and bypass if needed\n7. Testing approach: Verify all screens display correctly, navigation works as expected, and returning users can skip the flow",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 2,
+          "title": "Implement Permission Requests and Device Setup",
+          "description": "Handle Bluetooth permission requests with clear explanations and implement the device identification setup process",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation details:\n1. Create a permission request screen explaining why Bluetooth access is needed\n2. Implement the Bluetooth permission request logic with proper OS-specific handling\n3. Add fallback screens for permission denial with instructions to enable manually\n4. Create device identification setup screen for local device\n5. Implement device naming and identification storage functionality\n6. Add validation for device setup inputs\n7. Connect permission and device setup flows to the welcome screens from subtask 1\n8. Testing approach: Test permission requests on different OS versions, verify proper handling of permission grants/denials, and ensure device identification data is properly saved",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 3,
+          "title": "Implement Calendar View Setup and First-time User Guidance",
+          "description": "Create the initial calendar view with empty month cards and implement first-time user guidance overlays",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation details:\n1. Design and implement the initial calendar view with empty month cards\n2. Create placeholder states for the calendar when no data is available\n3. Implement first-time user guidance overlays using tooltips or coach marks\n4. Design overlay content explaining key app features and navigation\n5. Create a sequence for the guidance overlays to highlight different UI elements\n6. Implement overlay dismissal and completion tracking\n7. Connect the calendar view and guidance to the end of the permission/device setup flow\n8. Add final onboarding completion logic to mark the entire process as finished\n9. Testing approach: Verify calendar view displays correctly, guidance overlays appear in the right sequence, and onboarding completion is properly tracked for returning users",
+          "status": "pending",
+          "parentTaskId": 4
+        }
+      ]
     },
     {
       "id": 5,
@@ -206,7 +240,41 @@
       ],
       "priority": "medium",
       "details": "Implement a device management interface that:\n1. Displays discovered devices running 12x\n2. Allows naming devices with family member names\n3. Shows connection status and last sync time\n4. Provides options to forget/remove devices\n5. Indicates the local device\n6. Stores device associations in the FamilyDevice model\n7. Handles the case when new devices are discovered\n\nDesign the interface to be user-friendly and focus on family member names rather than technical identifiers.",
-      "testStrategy": "Test device discovery, naming, and management with multiple devices. Verify persistence of device names across app restarts. Test edge cases like duplicate names and removing devices."
+      "testStrategy": "Test device discovery, naming, and management with multiple devices. Verify persistence of device names across app restarts. Test edge cases like duplicate names and removing devices.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Device Discovery and Display UI",
+          "description": "Create the UI components to discover and display devices running 12x in the family network",
+          "dependencies": [],
+          "details": "Implementation steps:\n1. Create a DeviceDiscoveryManager class that uses Bonjour/Network Service Discovery to find devices running the 12x app\n2. Implement a DeviceListViewController with a UITableView to display discovered devices\n3. Design custom UITableViewCell for device entries with appropriate layout for device information\n4. Add a refresh control to allow manual scanning for devices\n5. Implement local device detection and highlight it in the UI\n6. Add loading indicators during device discovery process\n7. Create placeholder UI elements for connection status and sync time (to be implemented in subtask 2)\n\nTesting approach:\n- Test device discovery on local network with multiple devices\n- Verify UI updates when devices appear/disappear\n- Test refresh functionality\n- Confirm local device is properly identified",
+          "status": "pending",
+          "parentTaskId": 6
+        },
+        {
+          "id": 2,
+          "title": "Implement Device Naming and Status Indicators",
+          "description": "Add functionality to name devices with family member names and display connection status information",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation steps:\n1. Create a DeviceDetailViewController that appears when selecting a device\n2. Add text field for entering/editing family member names for devices\n3. Implement connection status indicators showing online/offline state\n4. Add last sync time display with appropriate formatting\n5. Create a ConnectionManager class to monitor device connectivity\n6. Implement status update mechanism to refresh connection status periodically\n7. Design UI indicators for connection status (green for connected, red for disconnected)\n8. Add validation for family member names (prevent duplicates, empty names)\n\nTesting approach:\n- Test name assignment and persistence\n- Verify status indicators update correctly when devices connect/disconnect\n- Test edge cases like long names, special characters\n- Verify sync time displays correctly in different formats",
+          "status": "pending",
+          "parentTaskId": 6
+        },
+        {
+          "id": 3,
+          "title": "Implement Core Data Integration and Device Management",
+          "description": "Create the Core Data model for device storage and implement device management features",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation steps:\n1. Create FamilyDevice Core Data model with properties for device identifier, name, last sync time, and connection status\n2. Implement CoreDataManager to handle CRUD operations for FamilyDevice entities\n3. Add functionality to forget/remove devices with confirmation dialog\n4. Create a DeviceSyncManager to track and update last sync times\n5. Implement automatic device association when new devices are discovered\n6. Add migration logic for existing devices when app updates\n7. Create a notification system for when device status changes\n8. Implement data persistence between app launches\n\nTesting approach:\n- Test adding, removing, and updating devices in Core Data\n- Verify device associations persist after app restart\n- Test device removal flow and confirm proper cleanup\n- Verify new device discovery and automatic association\n- Test edge cases like data migration and recovery from corruption",
+          "status": "pending",
+          "parentTaskId": 6
+        }
+      ]
     },
     {
       "id": 7,
@@ -314,7 +382,41 @@
       ],
       "priority": "medium",
       "details": "Build a history visualization interface that:\n1. Displays a chronological list of edits grouped by month\n2. Shows who made each change (family member name)\n3. Highlights what changed in each edit (title, location, date)\n4. Provides filtering options by family member or time period\n5. Uses clear visual design to show the evolution of events\n6. Handles the display of conflict resolutions\n7. Integrates with the EditHistory model\n\nFocus on making the history easy to understand for non-technical users.",
-      "testStrategy": "Test history display with various edit scenarios. Verify filtering works correctly. Test with large history datasets for performance. Ensure the UI clearly communicates what changed in each edit."
+      "testStrategy": "Test history display with various edit scenarios. Verify filtering works correctly. Test with large history datasets for performance. Ensure the UI clearly communicates what changed in each edit.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Core Data Integration for Edit History",
+          "description": "Create the data layer for retrieving and managing edit history records from Core Data, including fetching, sorting, and grouping functionality.",
+          "dependencies": [],
+          "details": "Implementation steps:\n1. Create a HistoryManager class to handle Core Data operations for EditHistory entities\n2. Implement methods to fetch all history records sorted by date\n3. Add functionality to group history records by month\n4. Create data structures to represent history items for the UI layer\n5. Implement methods to retrieve edit details (what changed, who made the change)\n6. Add support for filtering history by family member or date range\n7. Create unit tests for the HistoryManager class\n\nTesting approach:\n- Write unit tests for each Core Data fetch and filter operation\n- Create sample EditHistory records to verify grouping logic\n- Test edge cases like empty history or multiple edits on the same day",
+          "status": "pending",
+          "parentTaskId": 9
+        },
+        {
+          "id": 2,
+          "title": "Build History List UI with Grouping and Filtering",
+          "description": "Develop the user interface components for displaying the chronological list of edits with month-based grouping and implement filtering controls.",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation steps:\n1. Create a HistoryListView as the main container for the history visualization\n2. Implement a section-based list with month headers using List or UITableView\n3. Design and implement history item cells showing edit date, family member name, and a summary of changes\n4. Add a filter control panel with options for filtering by family member\n5. Implement a date range picker for time period filtering\n6. Connect the UI to the HistoryManager from subtask 1\n7. Ensure the list updates when filters are applied\n8. Add empty state handling when no history items match filters\n\nTesting approach:\n- Create UI tests to verify list rendering with sample data\n- Test filter interactions to ensure proper filtering\n- Verify month grouping headers display correctly\n- Test responsiveness on different device sizes",
+          "status": "pending",
+          "parentTaskId": 9
+        },
+        {
+          "id": 3,
+          "title": "Implement Change Highlighting and Detail View",
+          "description": "Create the detailed view of individual edit history items with visual highlighting of changes and implement conflict resolution display.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation steps:\n1. Design and implement a HistoryDetailView to show complete information about an edit\n2. Create visual components to highlight what changed in each edit (title, location, date)\n3. Implement before/after comparison for changed fields\n4. Add special visual treatment for conflict resolutions\n5. Design and implement animations or transitions to show evolution between states\n6. Create a navigation flow from the history list to the detail view\n7. Ensure the detail view is accessible and easy to understand\n8. Add options to navigate between consecutive edits\n\nTesting approach:\n- Test the detail view with various types of edits (title changes, date changes, etc.)\n- Verify conflict resolution display works correctly\n- Test accessibility features\n- Ensure navigation between list and detail views works smoothly",
+          "status": "pending",
+          "parentTaskId": 9
+        }
+      ]
     },
     {
       "id": 10,
@@ -328,7 +430,41 @@
       ],
       "priority": "low",
       "details": "Implement a hidden developer menu that provides:\n1. Real-time logs of Bluetooth discovery and connection attempts\n2. Data transfer statistics (bytes sent/received, success rates)\n3. Sync conflict resolution details\n4. Device connection history and quality metrics\n5. Battery usage statistics related to Bluetooth operations\n6. Options to force sync or clear sync history\n7. Detailed error logs and diagnostic information\n8. Export functionality for logs\n\nMake this view accessible through a hidden gesture or developer setting.",
-      "testStrategy": "Verify all diagnostic information is accurate. Test log export functionality. Ensure the interface provides useful troubleshooting information. Test that the view is properly hidden from regular users but accessible when needed."
+      "testStrategy": "Verify all diagnostic information is accurate. Test log export functionality. Ensure the interface provides useful troubleshooting information. Test that the view is properly hidden from regular users but accessible when needed.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Debug View Core Interface and Bluetooth Logging",
+          "description": "Create the hidden developer menu UI framework and implement real-time Bluetooth connectivity logging functionality",
+          "dependencies": [],
+          "details": "Implementation steps:\n1. Create a new activity/fragment for the debug view with a tab-based interface structure\n2. Implement the hidden gesture detector or developer setting toggle to access this view\n3. Create a real-time log display component with auto-scrolling and timestamp formatting\n4. Implement Bluetooth event listeners to capture discovery, connection attempts, and connection state changes\n5. Create a logging service that intercepts Bluetooth operations and formats them for display\n6. Add filtering capabilities to the log view (by severity, event type)\n7. Implement log retention policies and in-memory buffer management\n8. Add detailed error logging with stack traces for Bluetooth failures\n\nTesting approach:\n- Verify the hidden access mechanism works as expected\n- Confirm logs appear in real-time when Bluetooth operations occur\n- Test log display with various Bluetooth scenarios (discovery, connection, disconnection)\n- Verify log filtering functionality works correctly\n- Test with large volumes of log entries to ensure performance",
+          "status": "pending",
+          "parentTaskId": 10
+        },
+        {
+          "id": 2,
+          "title": "Implement Statistics and Metrics Visualization",
+          "description": "Create data visualization components for Bluetooth statistics, sync metrics, and battery usage information",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation steps:\n1. Design and implement data transfer statistics panel showing bytes sent/received and success rates\n2. Create a connection history view with device details and connection quality metrics\n3. Implement sync conflict resolution details panel with expandable entries\n4. Add battery usage statistics related to Bluetooth operations with time-series charts\n5. Create data models to store and update these statistics in real-time\n6. Implement refresh mechanisms to update statistics periodically\n7. Add visual indicators for connection quality (signal strength, error rates)\n8. Create a device history timeline showing connection/disconnection events\n\nTesting approach:\n- Verify statistics update correctly after Bluetooth operations\n- Test with multiple connected devices to ensure metrics are device-specific\n- Confirm battery usage statistics accurately reflect Bluetooth operations\n- Test with various sync conflict scenarios to ensure proper display\n- Verify performance with large history datasets",
+          "status": "pending",
+          "parentTaskId": 10
+        },
+        {
+          "id": 3,
+          "title": "Implement Diagnostic Controls and Log Export",
+          "description": "Add interactive diagnostic controls and implement log export functionality",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation steps:\n1. Implement force sync button with confirmation dialog and status feedback\n2. Create clear sync history functionality with appropriate warnings\n3. Add diagnostic test controls for Bluetooth connectivity\n4. Implement log export functionality supporting multiple formats (TXT, CSV, JSON)\n5. Create file naming conventions and storage location handling for exported logs\n6. Add share functionality to send logs via email or other sharing methods\n7. Implement log aggregation to combine different log types into a single export\n8. Add export filters to select specific time ranges or log categories\n9. Implement permissions handling for file storage access\n\nTesting approach:\n- Verify force sync and clear history functions work correctly\n- Test export functionality with various log volumes\n- Confirm exported logs contain all relevant information in readable format\n- Test sharing functionality with different apps\n- Verify permissions are properly requested and handled\n- Test with very large log files to ensure export performance",
+          "status": "pending",
+          "parentTaskId": 10
+        }
+      ]
     }
   ],
   "metadata": {

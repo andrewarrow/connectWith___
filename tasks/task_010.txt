@@ -19,3 +19,70 @@ Make this view accessible through a hidden gesture or developer setting.
 
 # Test Strategy:
 Verify all diagnostic information is accurate. Test log export functionality. Ensure the interface provides useful troubleshooting information. Test that the view is properly hidden from regular users but accessible when needed.
+
+# Subtasks:
+## 1. Implement Debug View Core Interface and Bluetooth Logging [pending]
+### Dependencies: None
+### Description: Create the hidden developer menu UI framework and implement real-time Bluetooth connectivity logging functionality
+### Details:
+Implementation steps:
+1. Create a new activity/fragment for the debug view with a tab-based interface structure
+2. Implement the hidden gesture detector or developer setting toggle to access this view
+3. Create a real-time log display component with auto-scrolling and timestamp formatting
+4. Implement Bluetooth event listeners to capture discovery, connection attempts, and connection state changes
+5. Create a logging service that intercepts Bluetooth operations and formats them for display
+6. Add filtering capabilities to the log view (by severity, event type)
+7. Implement log retention policies and in-memory buffer management
+8. Add detailed error logging with stack traces for Bluetooth failures
+
+Testing approach:
+- Verify the hidden access mechanism works as expected
+- Confirm logs appear in real-time when Bluetooth operations occur
+- Test log display with various Bluetooth scenarios (discovery, connection, disconnection)
+- Verify log filtering functionality works correctly
+- Test with large volumes of log entries to ensure performance
+
+## 2. Implement Statistics and Metrics Visualization [pending]
+### Dependencies: 10.1
+### Description: Create data visualization components for Bluetooth statistics, sync metrics, and battery usage information
+### Details:
+Implementation steps:
+1. Design and implement data transfer statistics panel showing bytes sent/received and success rates
+2. Create a connection history view with device details and connection quality metrics
+3. Implement sync conflict resolution details panel with expandable entries
+4. Add battery usage statistics related to Bluetooth operations with time-series charts
+5. Create data models to store and update these statistics in real-time
+6. Implement refresh mechanisms to update statistics periodically
+7. Add visual indicators for connection quality (signal strength, error rates)
+8. Create a device history timeline showing connection/disconnection events
+
+Testing approach:
+- Verify statistics update correctly after Bluetooth operations
+- Test with multiple connected devices to ensure metrics are device-specific
+- Confirm battery usage statistics accurately reflect Bluetooth operations
+- Test with various sync conflict scenarios to ensure proper display
+- Verify performance with large history datasets
+
+## 3. Implement Diagnostic Controls and Log Export [pending]
+### Dependencies: 10.1, 10.2
+### Description: Add interactive diagnostic controls and implement log export functionality
+### Details:
+Implementation steps:
+1. Implement force sync button with confirmation dialog and status feedback
+2. Create clear sync history functionality with appropriate warnings
+3. Add diagnostic test controls for Bluetooth connectivity
+4. Implement log export functionality supporting multiple formats (TXT, CSV, JSON)
+5. Create file naming conventions and storage location handling for exported logs
+6. Add share functionality to send logs via email or other sharing methods
+7. Implement log aggregation to combine different log types into a single export
+8. Add export filters to select specific time ranges or log categories
+9. Implement permissions handling for file storage access
+
+Testing approach:
+- Verify force sync and clear history functions work correctly
+- Test export functionality with various log volumes
+- Confirm exported logs contain all relevant information in readable format
+- Test sharing functionality with different apps
+- Verify permissions are properly requested and handled
+- Test with very large log files to ensure export performance
+
