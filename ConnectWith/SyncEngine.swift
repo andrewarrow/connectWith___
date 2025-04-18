@@ -675,21 +675,55 @@ class SyncEngine: ObservableObject {
                         
                         // Process conflicts if we have potential conflicts
                         if detectableConflicts {
-                            // Detect conflicts between local and remote events
-                            let detectedConflicts = ConflictDetector.detectEventConflicts(
+                            // Reference to the conflict resolution engine
+                            let resolutionEngine = ConflictResolutionEngine.shared
+                            
+                            // Get the event field policies from the engine
+                            let mirror = Mirror(reflecting: resolutionEngine)
+                            var fieldPolicies: [ConflictResolutionEngine.FieldPolicy] = []
+                            
+                            // Extract field policies using reflection
+                            for child in mirror.children {
+                                if child.label == "eventFieldPolicies", let policies = child.value as? [ConflictResolutionEngine.FieldPolicy] {
+                                    fieldPolicies = policies
+                                    break
+                                }
+                            }
+                            
+                            // First detect basic conflicts to count them
+                            let basicConflicts = ConflictDetector.detectEventConflicts(
                                 localEvents: localEvents,
                                 remoteEvents: remoteEvents,
                                 baseEvents: baseEvents.isEmpty ? nil : baseEvents
                             )
                             
-                            conflicts = detectedConflicts.count
+                            conflicts = basicConflicts.count
                             
                             if conflicts > 0 {
                                 Logger.sync.info("Detected \(conflicts) event conflicts with device \(deviceId)")
                                 
+                                // If we have field policies, use detailed conflict detection
+                                if !fieldPolicies.isEmpty {
+                                    // Get detailed conflicts with field-level information
+                                    let detailedConflicts = ConflictDetector.detectDetailedEventConflicts(
+                                        localEvents: localEvents,
+                                        remoteEvents: remoteEvents,
+                                        baseEvents: baseEvents.isEmpty ? nil : baseEvents,
+                                        fieldPolicies: fieldPolicies
+                                    )
+                                    
+                                    // Log detailed conflict information
+                                    for conflict in detailedConflicts {
+                                        let severity = conflict.overallSeverity
+                                        let affectedFields = conflict.fieldConflicts.map { $0.fieldName }.joined(separator: ", ")
+                                        Logger.sync.info("Detailed conflict for event \(conflict.local.id): Severity: \(severity), Fields: \(affectedFields)")
+                                    }
+                                }
+                                
                                 // Use the conflict resolution engine to resolve the conflicts
-                                let resolutionEngine = ConflictResolutionEngine.shared
-                                for conflict in detectedConflicts {
+                                var resolutionSummary: [String: Int] = [:]
+                                
+                                for conflict in basicConflicts {
                                     let resolution = resolutionEngine.resolveEventConflict(
                                         baseEvent: conflict.base,
                                         localEvent: conflict.local,
@@ -697,8 +731,16 @@ class SyncEngine: ObservableObject {
                                         context: context
                                     )
                                     
-                                    Logger.sync.info("Resolved conflict for event \(resolution.entityId): \(resolution.resolution.rawValue)")
+                                    // Track resolution methods for summary
+                                    let method = resolution.resolution.rawValue
+                                    resolutionSummary[method] = (resolutionSummary[method] ?? 0) + 1
+                                    
+                                    Logger.sync.info("Resolved conflict for event \(resolution.entityId): \(resolution.resolution.rawValue), Fields: \(resolution.fieldsResolved.joined(separator: ", "))")
                                 }
+                                
+                                // Log conflict resolution summary
+                                let summaryText = resolutionSummary.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+                                Logger.sync.info("Conflict resolution summary: \(summaryText)")
                                 
                                 // After resolving conflicts, save the context
                                 do {
