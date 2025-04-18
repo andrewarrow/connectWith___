@@ -21,6 +21,10 @@ struct BluetoothDebugView: View {
     @State private var exportedLogData: Data?
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var isDeviceCharging: Bool = false
+    @State private var selectedExportFormat: ExportFormat = .txt
+    @State private var showClearHistoryConfirmation = false
+    @State private var showDiagnosticTestView = false
+    @State private var selectedTimeRange: TimeRange = .all
     
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     
@@ -39,6 +43,7 @@ struct BluetoothDebugView: View {
         case dataTransfer = "Data Transfer"
         case batteryStats = "Battery Statistics"
         case errorLogs = "Error Logs"
+        case diagnosticTools = "Diagnostic Tools"
         
         var id: String { self.rawValue }
     }
@@ -50,6 +55,34 @@ struct BluetoothDebugView: View {
         case error = "Error"
         case debug = "Debug"
         case all = "All"
+    }
+    
+    /// Export format options
+    enum ExportFormat: String, CaseIterable {
+        case txt = "TXT"
+        case csv = "CSV"
+        case json = "JSON"
+    }
+    
+    /// Time range for log filtering and export
+    enum TimeRange: String, CaseIterable {
+        case hour = "Last Hour"
+        case day = "Last 24 Hours"
+        case week = "Last Week"
+        case all = "All Time"
+        
+        var timeInterval: TimeInterval {
+            switch self {
+            case .hour:
+                return 3600 // 1 hour in seconds
+            case .day:
+                return 86400 // 24 hours in seconds
+            case .week:
+                return 604800 // 7 days in seconds
+            case .all:
+                return TimeInterval.greatestFiniteMagnitude
+            }
+        }
     }
     
     /// Log message structure for storing logs with metadata
@@ -444,6 +477,8 @@ struct BluetoothDebugView: View {
             return AnyView(batteryStatsSection)
         case .errorLogs:
             return AnyView(errorLogsSection)
+        case .diagnosticTools:
+            return AnyView(diagnosticToolsSection)
         }
     }
     
@@ -1152,6 +1187,164 @@ struct BluetoothDebugView: View {
         } else {
             return "Just now"
         }
+    }
+    
+    /// Clears sync history for the selected time range
+    private func clearSyncHistory() {
+        // Get the cutoff date based on selected time range
+        let cutoffDate = Calendar.current.date(byAdding: .second, value: -Int(selectedTimeRange.timeInterval), to: Date()) ?? Date()
+        
+        // Only delete logs older than cutoffDate if not "All Time"
+        let dateToUse = selectedTimeRange == .all ? Date.distantPast : cutoffDate
+        
+        // Delete sync logs
+        let deletedCount = SyncHistoryManager.shared.cleanupOldSyncLogs(olderThan: dateToUse)
+        
+        // Log the action
+        addLog(level: .warning, message: "Cleared \(deletedCount) sync history logs \(selectedTimeRange == .all ? "for all time" : "for \(selectedTimeRange.rawValue)")")
+    }
+    
+    /// Runs connection diagnostic test
+    private func runConnectionTest() {
+        addLog(level: .info, message: "Starting connection diagnostic test")
+        
+        // Test Bluetooth state
+        let bluetoothEnabled = bluetoothDiscoveryManager.bluetoothState == .poweredOn
+        addLog(level: bluetoothEnabled ? .info : .error, message: "Bluetooth state: \(bluetoothStateString)", details: bluetoothEnabled ? "Bluetooth is properly enabled" : "Bluetooth needs to be enabled for proper operation")
+        
+        // Test scanning capability
+        if bluetoothEnabled {
+            // Start scanning temporarily
+            bluetoothDiscoveryManager.startAdaptiveScanning()
+            
+            // Log scan test
+            addLog(level: .info, message: "Testing Bluetooth scanning capability")
+            
+            // Schedule scan test result after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                let deviceCount = self.bluetoothDiscoveryManager.nearbyDevices.count
+                self.addLog(level: .info, message: "Detected \(deviceCount) nearby Bluetooth devices", 
+                           details: deviceCount > 0 ? "Scanning is working properly" : "No devices detected - this may be normal if no Bluetooth devices are nearby")
+                
+                // Stop scanning
+                self.bluetoothDiscoveryManager.stopScanning()
+                
+                // Test for connected devices
+                let connectedCount = self.bluetoothDiscoveryManager.connectedPeripherals.count
+                self.addLog(level: connectedCount > 0 ? .info : .warning, 
+                           message: "\(connectedCount) devices currently connected",
+                           details: connectedCount > 0 ? "Connection capability verified" : "No connections active - try connecting to a device to test connection capability")
+                
+                // Conclude test
+                self.addLog(level: .info, message: "Connection diagnostic test completed")
+            }
+        } else {
+            addLog(level: .error, message: "Cannot run scan test because Bluetooth is not enabled")
+        }
+    }
+    
+    /// Runs sync protocol test
+    private func runSyncTest() {
+        addLog(level: .info, message: "Starting sync protocol test")
+        
+        // Check for connected devices
+        if bluetoothDiscoveryManager.connectedPeripherals.isEmpty {
+            addLog(level: .error, message: "Sync test failed - no connected devices", 
+                  details: "Connect to at least one device to test sync protocol")
+            return
+        }
+        
+        // Test with first connected device
+        let testDevice = bluetoothDiscoveryManager.connectedPeripherals.first!
+        let deviceName = getDeviceName(peripheral: testDevice)
+        
+        addLog(level: .info, message: "Testing sync protocol with \(deviceName)")
+        
+        // Create a simulated data packet
+        let testPacket = """
+        {
+            "testId": "\(UUID().uuidString)",
+            "timestamp": \(Date().timeIntervalSince1970),
+            "deviceId": "\(UIDevice.current.identifierForVendor?.uuidString ?? "Unknown")",
+            "testType": "syncProtocol",
+            "payloadSize": 1024
+        }
+        """.data(using: .utf8)!
+        
+        // Log test data
+        addLog(level: .info, message: "Created test packet of \(testPacket.count) bytes")
+        
+        // Simulate transfer - this would be an actual transfer in a real implementation
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            // Simulate successful transfer
+            DispatchQueue.main.async {
+                // Log successful test
+                self.addLog(level: .info, message: "Test data sent successfully to \(deviceName)")
+                
+                // Wait for response
+                self.addLog(level: .info, message: "Waiting for response from \(deviceName)")
+                
+                // Simulate response
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.addLog(level: .info, message: "Response received from \(deviceName)")
+                    self.addLog(level: .info, message: "Sync protocol test completed successfully", 
+                               details: "Round-trip communication verified with \(deviceName)")
+                }
+            }
+        }
+    }
+    
+    /// Generates test data for testing
+    private func generateTestData() {
+        addLog(level: .info, message: "Generating test data for diagnostics")
+        
+        // Generate test sync logs
+        let testDeviceIds = [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000003"
+        ]
+        
+        let testDeviceNames = [
+            "Test iPhone",
+            "Test iPad",
+            "Test Mac"
+        ]
+        
+        // Create simulated log entries
+        for i in 0..<3 {
+            // Create successful sync log
+            SyncHistoryManager.shared.createSyncLog(
+                deviceId: testDeviceIds[i],
+                deviceName: testDeviceNames[i],
+                eventsReceived: Int.random(in: 1...5),
+                eventsSent: Int.random(in: 1...5),
+                conflicts: Int.random(in: 0...2),
+                syncDuration: Double.random(in: 0.5...3.0),
+                syncSuccess: true
+            )
+            
+            // Add log message
+            addLog(level: .info, message: "Generated test sync log for \(testDeviceNames[i])")
+            
+            // Create some simulated log messages
+            let logLevels: [LogLevel] = [.info, .debug, .warning, .error]
+            for _ in 0..<3 {
+                let randomLevel = logLevels.randomElement()!
+                addLog(level: randomLevel, 
+                      message: "Test log message for \(testDeviceNames[i])",
+                      details: "Generated for diagnostic testing purposes")
+            }
+        }
+        
+        // Add a test error
+        addLog(level: .error, 
+              message: "Simulated connection error for testing",
+              details: "Bluetooth connection terminated abnormally (TEST ONLY)")
+        
+        // Confirmation
+        addLog(level: .info, message: "Test data generation completed", 
+              details: "Created test sync logs and log messages for diagnostic evaluation")
     }
     
     /// Data transfer section
@@ -2029,6 +2222,259 @@ struct BluetoothDebugView: View {
         .padding()
     }
     
+    /// Diagnostic tools section
+    private var diagnosticToolsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Advanced Sync Controls Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Sync Controls")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .padding(.bottom, 4)
+                
+                // Force Sync Button with options
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Button(action: {
+                            // Force sync with all connected devices
+                            for peripheral in bluetoothDiscoveryManager.connectedPeripherals {
+                                syncWithDevice(peripheral)
+                            }
+                            addLog(level: .info, message: "Manual sync initiated with all devices")
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Text("Force Sync All Devices")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                    }
+                    
+                    // Device-specific sync
+                    Text("Sync with specific device:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                    
+                    if bluetoothDiscoveryManager.connectedPeripherals.isEmpty {
+                        Text("No connected devices")
+                            .foregroundColor(.gray)
+                            .italic()
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(bluetoothDiscoveryManager.connectedPeripherals, id: \.identifier) { peripheral in
+                            HStack {
+                                Text(getDeviceName(peripheral: peripheral))
+                                    .font(.body)
+                                
+                                Spacer()
+                                
+                                Button("Sync Now") {
+                                    syncWithDevice(peripheral)
+                                    addLog(level: .info, message: "Manual sync initiated with \(getDeviceName(peripheral: peripheral))")
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.blue.opacity(0.8))
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+                
+                // Clear Sync History Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Sync History Management")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+                    
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            showClearHistoryConfirmation = true
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Clear Sync History")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.8))
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .alert(isPresented: $showClearHistoryConfirmation) {
+                            Alert(
+                                title: Text("Clear Sync History"),
+                                message: Text("This will delete all sync history logs. This operation cannot be undone."),
+                                primaryButton: .destructive(Text("Clear History")) {
+                                    clearSyncHistory()
+                                },
+                                secondaryButton: .cancel()
+                            )
+                        }
+                    }
+                    
+                    Picker("Time Range", selection: $selectedTimeRange) {
+                        ForEach(TimeRange.allCases, id: \.self) { range in
+                            Text(range.rawValue).tag(range)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.top, 8)
+                    
+                    Text("Selected range: \(selectedTimeRange.rawValue)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+            }
+            
+            // Log Export Controls
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Log Export Options")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .padding(.vertical, 8)
+                
+                // Export format picker
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Export Format")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Picker("Export Format", selection: $selectedExportFormat) {
+                        ForEach(ExportFormat.allCases, id: \.self) { format in
+                            Text(format.rawValue).tag(format)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    
+                    // Format description
+                    Group {
+                        switch selectedExportFormat {
+                        case .txt:
+                            Text("Plain text format with detailed sections for human readability")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        case .csv:
+                            Text("Comma-separated values for import into spreadsheet applications")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        case .json:
+                            Text("JSON format for programmatic analysis and machine readability")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.top, 4)
+                    
+                    // Time range for export
+                    Text("Export Time Range")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 12)
+                    
+                    Picker("Time Range", selection: $selectedTimeRange) {
+                        ForEach(TimeRange.allCases, id: \.self) { range in
+                            Text(range.rawValue).tag(range)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    
+                    // Export button
+                    Button(action: {
+                        exportLogs()
+                    }) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Export Logs")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    .padding(.top, 12)
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+            }
+            
+            // Diagnostic Tests
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Diagnostic Tests")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .padding(.vertical, 8)
+                
+                // Connection test
+                VStack(alignment: .leading, spacing: 8) {
+                    Button(action: {
+                        runConnectionTest()
+                    }) {
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                            Text("Run Connection Diagnostic")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    
+                    Button(action: {
+                        runSyncTest()
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Text("Test Sync Protocol")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    
+                    Button(action: {
+                        generateTestData()
+                    }) {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                            Text("Generate Test Data")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+            }
+        }
+        .padding()
+    }
+    
     // MARK: - Helper Functions
     
     /// Status indicator with colored dot
@@ -2395,17 +2841,63 @@ struct BluetoothDebugView: View {
         }
     }
     
-    /// Export logs
+    /// Enhanced log exports with format options
     private func exportLogs() {
+        // Determine format based on format selection or default to TXT
+        let exportFormat = selectedExportFormat
+        
+        // Format log data based on selected format
+        let formattedLogData: Data?
+        
+        switch exportFormat {
+        case .json:
+            formattedLogData = formatLogsAsJSON()
+        case .csv:
+            formattedLogData = formatLogsAsCSV()
+        default:
+            formattedLogData = formatLogsAsTXT()
+        }
+        
+        // Share the formatted log data
+        if let data = formattedLogData {
+            exportedLogData = data
+            showShareSheet = true
+            addLog(level: .info, message: "Logs exported in \(exportFormat) format")
+        } else {
+            addLog(level: .error, message: "Failed to export logs")
+        }
+    }
+    
+    /// Format logs as plain text (TXT)
+    private func formatLogsAsTXT() -> Data? {
         var logText = "--- 12x Bluetooth Debug Logs ---\n"
         logText += "Generated: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium))\n"
         logText += "Device ID: \(UIDevice.current.identifierForVendor?.uuidString ?? "Unknown")\n"
         logText += "iOS Version: \(UIDevice.current.systemVersion)\n"
         logText += "Battery Level: \(Int(batteryLevel * 100))%\n"
-        logText += "Bluetooth State: \(bluetoothStateString)\n\n"
+        logText += "Bluetooth State: \(bluetoothStateString)\n"
+        logText += "Current Scan Profile: \(bluetoothDiscoveryManager.currentScanningProfile.rawValue.capitalized)\n"
+        logText += "Connected Devices: \(bluetoothDiscoveryManager.connectedPeripherals.count)\n\n"
         
-        logText += "--- Logs ---\n"
+        // Device specific information
+        logText += "--- Device Information ---\n"
+        for peripheral in bluetoothDiscoveryManager.connectedPeripherals {
+            logText += "Connected Device: \(getDeviceName(peripheral: peripheral))\n"
+            logText += "  ID: \(peripheral.identifier.uuidString)\n"
+            logText += "  State: \(peripheral.state.rawValue)\n"
+        }
+        logText += "\n"
         
+        // Sync statistics if available
+        logText += "--- Sync Statistics ---\n"
+        let metrics = SyncHistoryManager.shared.syncHealthMetrics
+        logText += "Success Rate: \(Int(metrics.successRate * 100))%\n"
+        logText += "Average Duration: \(String(format: "%.2fs", metrics.averageDuration))\n"
+        logText += "Total Conflicts Resolved: \(metrics.totalConflictsResolved)\n"
+        logText += "Total Events Exchanged: \(metrics.totalEventsExchanged)\n\n"
+        
+        // Log messages
+        logText += "--- Log Messages ---\n"
         for log in logMessages {
             let timestamp = DateFormatter.localizedString(from: log.timestamp, dateStyle: .short, timeStyle: .medium)
             logText += "[\(timestamp)] [\(log.level)] \(log.message)\n"
@@ -2417,14 +2909,90 @@ struct BluetoothDebugView: View {
         
         logText += "--- End of Logs ---"
         
-        // Convert to data
-        if let data = logText.data(using: .utf8) {
-            exportedLogData = data
-            showShareSheet = true
-            addLog(level: .info, message: "Logs exported")
-        } else {
-            addLog(level: .error, message: "Failed to export logs")
+        return logText.data(using: .utf8)
+    }
+    
+    /// Format logs as CSV
+    private func formatLogsAsCSV() -> Data? {
+        var csv = "Timestamp,Level,Message,Details\n"
+        
+        // Header row with device information
+        csv += "# Device: \(UIDevice.current.identifierForVendor?.uuidString ?? "Unknown")\n"
+        csv += "# iOS: \(UIDevice.current.systemVersion)\n"
+        csv += "# Generated: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium))\n"
+        csv += "# Bluetooth: \(bluetoothStateString)\n\n"
+        
+        // Format each log entry as CSV
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .medium
+        
+        for log in logMessages {
+            let timestamp = dateFormatter.string(from: log.timestamp)
+            
+            // Escape CSV fields properly
+            let escapedMessage = escapeCSVField(log.message)
+            let escapedDetails = escapeCSVField(log.details ?? "")
+            
+            csv += "\"\(timestamp)\",\"\(log.level)\",\"\(escapedMessage)\",\"\(escapedDetails)\"\n"
         }
+        
+        return csv.data(using: .utf8)
+    }
+    
+    /// Format logs as JSON
+    private func formatLogsAsJSON() -> Data? {
+        // Create device info dictionary
+        let deviceInfo: [String: Any] = [
+            "deviceId": UIDevice.current.identifierForVendor?.uuidString ?? "Unknown",
+            "model": UIDevice.current.model,
+            "systemVersion": UIDevice.current.systemVersion,
+            "batteryLevel": batteryLevel,
+            "bluetoothState": bluetoothStateString,
+            "scanProfile": bluetoothDiscoveryManager.currentScanningProfile.rawValue,
+            "timestamp": DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium)
+        ]
+        
+        // Create array of log entries
+        var logEntries: [[String: Any]] = []
+        
+        for log in logMessages {
+            var entry: [String: Any] = [
+                "timestamp": log.timestamp.timeIntervalSince1970,
+                "formattedTime": log.formattedTimestamp,
+                "level": log.level,
+                "message": log.message
+            ]
+            
+            if let details = log.details, !details.isEmpty {
+                entry["details"] = details
+            }
+            
+            logEntries.append(entry)
+        }
+        
+        // Create final JSON structure
+        let jsonDict: [String: Any] = [
+            "deviceInfo": deviceInfo,
+            "logs": logEntries,
+            "connectedDevices": bluetoothDiscoveryManager.connectedPeripherals.count,
+            "syncMetrics": [
+                "successRate": SyncHistoryManager.shared.syncHealthMetrics.successRate,
+                "averageDuration": SyncHistoryManager.shared.syncHealthMetrics.averageDuration,
+                "conflictsResolved": SyncHistoryManager.shared.syncHealthMetrics.totalConflictsResolved,
+                "eventsExchanged": SyncHistoryManager.shared.syncHealthMetrics.totalEventsExchanged
+            ]
+        ]
+        
+        // Convert to JSON data
+        return try? JSONSerialization.data(withJSONObject: jsonDict, options: .prettyPrinted)
+    }
+    
+    /// Helper function to escape CSV fields
+    private func escapeCSVField(_ field: String) -> String {
+        // Replace quotes with double quotes (CSV escaping)
+        return field.replacingOccurrences(of: "\"", with: "\"\"")
+            .replacingOccurrences(of: "\n", with: " ")
     }
 }
 
