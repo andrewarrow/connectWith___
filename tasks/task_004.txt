@@ -32,7 +32,7 @@ Implementation details:
 6. Add logic to check if user has completed onboarding before and bypass if needed
 7. Testing approach: Verify all screens display correctly, navigation works as expected, and returning users can skip the flow
 
-## 2. Implement Permission Requests and Device Setup [pending]
+## 2. Implement Permission Requests and Device Setup [completed - 2025-04-18]
 ### Dependencies: 4.1
 ### Description: Handle Bluetooth permission requests with clear explanations and implement the device identification setup process
 ### Details:

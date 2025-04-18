@@ -2,6 +2,7 @@ import SwiftUI
 import CoreBluetooth
 
 // MARK: - Onboarding View
+// This file implements both Task 4.1 (Welcome Screens) and Task 4.2 (Bluetooth Permission Request and Device Setup)
 struct OnboardingView: View {
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @Binding var isComplete: Bool
