@@ -1,6 +1,6 @@
 # Task ID: 1
 # Title: Setup Core Data Models and Database
-# Status: pending
+# Status: in-progress
 # Dependencies: None
 # Priority: high
 # Description: Implement the local SQLite database with Core Data models for Event, EditHistory, FamilyDevice, and SyncLog entities as specified in the PRD.
@@ -17,22 +17,22 @@ Implement CRUD operations for all entities and ensure data encryption using iOS 
 Write unit tests for each model and CRUD operation. Verify data persistence across app restarts. Test data encryption and ensure proper relationships between entities.
 
 # Subtasks:
-## 1. Create Core Data Model and Stack [pending]
+## 1. Create Core Data Model and Stack [completed]
 ### Dependencies: None
 ### Description: Define the data model schema with all required entities and set up the Core Data stack with proper encryption
 ### Details:
-1. Create a new Core Data model file (.xcdatamodeld)
-2. Define the Event entity with attributes: UUID, month (Int16), title (String), location (String), day (Int16), createdAt (Date), lastModifiedAt (Date), lastModifiedBy (String), color (String)
-3. Define the EditHistory entity with attributes: UUID, eventId (String), deviceId (String), deviceName (String), previousTitle (String), newTitle (String), previousLocation (String), newLocation (String), previousDay (Int16), newDay (Int16), timestamp (Date)
-4. Define the FamilyDevice entity with attributes: UUID, bluetoothIdentifier (String), customName (String), lastSyncTimestamp (Date), isLocalDevice (Boolean)
-5. Define the SyncLog entity with attributes: UUID, timestamp (Date), deviceId (String), deviceName (String), eventsReceived (Int32), eventsSent (Int32), conflicts (Int32), resolutionMethod (String), details (String)
-6. Set up relationships between entities (e.g., Event to EditHistory)
-7. Create a CoreDataManager class with:
+1. ✅ Create a new Core Data model file (.xcdatamodeld)
+2. ✅ Define the Event entity with attributes: UUID, month (Int16), title (String), location (String), day (Int16), createdAt (Date), lastModifiedAt (Date), lastModifiedBy (String), color (String)
+3. ✅ Define the EditHistory entity with attributes: UUID, eventId (String), deviceId (String), deviceName (String), previousTitle (String), newTitle (String), previousLocation (String), newLocation (String), previousDay (Int16), newDay (Int16), timestamp (Date)
+4. ✅ Define the FamilyDevice entity with attributes: UUID, bluetoothIdentifier (String), customName (String), lastSyncTimestamp (Date), isLocalDevice (Boolean)
+5. ✅ Define the SyncLog entity with attributes: UUID, timestamp (Date), deviceId (String), deviceName (String), eventsReceived (Int32), eventsSent (Int32), conflicts (Int32), resolutionMethod (String), details (String)
+6. ✅ Set up relationships between entities (e.g., Event to EditHistory)
+7. ✅ Create a CoreDataManager class with:
    - Persistent container setup
    - Context management (main and background)
    - Data protection configuration using NSFileProtectionComplete
-8. Implement database initialization and migration handling
-9. Test the Core Data stack initialization and verify data protection is enabled
+8. ✅ Implement database initialization and migration handling
+9. ✅ Test the Core Data stack initialization and verify data protection is enabled
 
 ## 2. Implement CRUD Operations for All Entities [pending]
 ### Dependencies: 1.1

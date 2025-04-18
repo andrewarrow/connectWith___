@@ -12,4 +12,70 @@
             </uniqueConstraint>
         </uniqueConstraints>
     </entity>
+    <entity name="Event" representedClassName=".Event" syncable="YES">
+        <attribute name="color" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="day" attributeType="Integer 16" minValueString="1" maxValueString="31" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastModifiedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastModifiedBy" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="month" attributeType="Integer 16" minValueString="1" maxValueString="12" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="title" attributeType="String" defaultValueString=""/>
+        <relationship name="history" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="EditHistory" inverseName="event" inverseEntity="EditHistory"/>
+        <uniqueConstraints>
+            <uniqueConstraint>
+                <constraint value="id"/>
+            </uniqueConstraint>
+        </uniqueConstraints>
+    </entity>
+    <entity name="EditHistory" representedClassName=".EditHistory" syncable="YES">
+        <attribute name="deviceId" attributeType="String"/>
+        <attribute name="deviceName" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="newDay" optional="YES" attributeType="Integer 16" usesScalarValueType="YES"/>
+        <attribute name="newLocation" optional="YES" attributeType="String"/>
+        <attribute name="newTitle" optional="YES" attributeType="String"/>
+        <attribute name="previousDay" optional="YES" attributeType="Integer 16" usesScalarValueType="YES"/>
+        <attribute name="previousLocation" optional="YES" attributeType="String"/>
+        <attribute name="previousTitle" optional="YES" attributeType="String"/>
+        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="event" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Event" inverseName="history" inverseEntity="Event"/>
+        <uniqueConstraints>
+            <uniqueConstraint>
+                <constraint value="id"/>
+            </uniqueConstraint>
+        </uniqueConstraints>
+    </entity>
+    <entity name="FamilyDevice" representedClassName=".FamilyDevice" syncable="YES">
+        <attribute name="bluetoothIdentifier" attributeType="String"/>
+        <attribute name="customName" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isLocalDevice" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="lastSyncTimestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <uniqueConstraints>
+            <uniqueConstraint>
+                <constraint value="id"/>
+            </uniqueConstraint>
+            <uniqueConstraint>
+                <constraint value="bluetoothIdentifier"/>
+            </uniqueConstraint>
+        </uniqueConstraints>
+    </entity>
+    <entity name="SyncLog" representedClassName=".SyncLog" syncable="YES">
+        <attribute name="conflicts" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="details" optional="YES" attributeType="String"/>
+        <attribute name="deviceId" attributeType="String"/>
+        <attribute name="deviceName" optional="YES" attributeType="String"/>
+        <attribute name="eventsReceived" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="eventsSent" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="resolutionMethod" optional="YES" attributeType="String"/>
+        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
+        <uniqueConstraints>
+            <uniqueConstraint>
+                <constraint value="id"/>
+            </uniqueConstraint>
+        </uniqueConstraints>
+    </entity>
 </model>
