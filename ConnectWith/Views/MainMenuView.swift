@@ -430,6 +430,10 @@ struct MainMenuView: View {
     // Added to track if we're in onboarding mode (should always be false here since onboarding is completed)
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
+    // For hidden debug mode activation
+    @State private var tapCount = 0
+    @State private var lastTapTime = Date()
+    
     var connectedDevicesCount: Int {
         return DeviceStore.shared.getAllDevices().count
     }
@@ -509,6 +513,24 @@ struct MainMenuView: View {
             .padding()
             .navigationTitle("12× Family Outings")
             .navigationBarHidden(true)
+            // Hidden gesture detector for developer access in release builds
+            .simultaneousGesture(
+                TapGesture(count: 1)
+                    .onEnded { _ in
+                        let now = Date()
+                        if now.timeIntervalSince(lastTapTime) < 0.5 {
+                            tapCount += 1
+                            if tapCount >= 5 {
+                                // Five rapid taps on title area activates debug mode
+                                showDebugView = true
+                                tapCount = 0
+                            }
+                        } else {
+                            tapCount = 1
+                        }
+                        lastTapTime = now
+                    }
+            )
             .alert("Bluetooth Permission Required", isPresented: $bluetoothManager.showPermissionAlert) {
                 Button("Settings", role: .destructive) {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -532,12 +554,15 @@ struct MainMenuView: View {
                 FamilyCalendarView()
                     .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             }
-            #if DEBUG
             .sheet(isPresented: $showDebugView) {
-                // In debug mode, show a temporary debug view with Bluetooth info
-                DebugInfoView(bluetoothManager: bluetoothManager)
+                // Show the comprehensive Bluetooth Debug View
+                NavigationView {
+                    BluetoothDebugView()
+                        .environmentObject(bluetoothDiscoveryManager)
+                        .environmentObject(ConnectionManager.shared)
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
             }
-            #endif
             .onAppear {
                 // We should already have at least one device since onboarding is complete,
                 // but we can still start scanning again for more devices
