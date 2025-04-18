@@ -2,6 +2,7 @@ import SwiftUI
 import CoreBluetooth
 import CoreData
 import OSLog
+import Combine
 
 // Import our calendar components directly
 struct CalendarViewContainer: View {
@@ -417,9 +418,25 @@ extension NSNumber {
 }
 #endif
 
+// Forward declarations for views
+struct FamilyCalendarView: View {
+    var body: some View { Text("Calendar") }
+}
+
+struct NearbyDevicesView: View {
+    var body: some View { Text("Devices") }
+}
+
+struct HistoryListView: View {
+    var body: some View { Text("History") }
+}
+
+struct BluetoothDebugView: View {
+    var body: some View { Text("Debug") }
+}
+
 struct MainMenuView: View {
-    @EnvironmentObject private var bluetoothManager: BluetoothDiscoveryManager
-    @EnvironmentObject private var guidanceManager: GuidanceManager
+    @StateObject private var bluetoothManager = BluetoothManager()
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
     @State private var showDeviceList = false
@@ -552,14 +569,12 @@ struct MainMenuView: View {
             .sheet(isPresented: $showCalendarView) {
                 // Use our new FamilyCalendarView with monthly event cards
                 FamilyCalendarView()
-                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             }
             .sheet(isPresented: $showDebugView) {
                 // Show the comprehensive Bluetooth Debug View
                 NavigationView {
                     BluetoothDebugView()
-                        .environmentObject(bluetoothDiscoveryManager)
-                        .environmentObject(ConnectionManager.shared)
+                        .environmentObject(bluetoothManager)
                 }
                 .navigationViewStyle(StackNavigationViewStyle())
             }
@@ -578,12 +593,10 @@ struct MainMenuView: View {
             }
             .sheet(isPresented: $showDeviceList) {
                 NearbyDevicesView()
-                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
                     .environmentObject(bluetoothManager)
             }
             .sheet(isPresented: $showHistoryView) {
                 HistoryListView()
-                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             }
         }
     }
@@ -820,7 +833,7 @@ struct CalendarEvent: Identifiable, Codable {
 
 struct DeviceListView: View {
     @Environment(\.presentationMode) private var presentationMode
-    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @StateObject private var bluetoothManager = BluetoothManager()
     @State private var storedDevices: [DeviceStore.StoredDevice] = []
     @State private var deviceToRename: (DeviceStore.StoredDevice?, CBPeripheral?, [String: Any]?) = (nil, nil, nil)
     @State private var isRenamingDevice = false
@@ -1334,7 +1347,7 @@ struct SettingsView: View {
     @Binding var customDeviceName: String
     var onSave: () -> Void
     @Environment(\.presentationMode) var presentationMode
-    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @StateObject private var bluetoothManager = BluetoothManager()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var showingResetConfirmation = false
     @State private var showingRestartAlert = false

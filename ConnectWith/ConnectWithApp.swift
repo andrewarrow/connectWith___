@@ -2,6 +2,7 @@ import SwiftUI
 import CoreBluetooth
 import CoreData
 import OSLog
+import Combine
 
 // MARK: - Simple In-Memory Device Store
 // Using a simpler approach to avoid CoreData initialization issues
@@ -392,7 +393,7 @@ extension CalendarStore.EventSyncInfo: Codable {
 // MARK: - Onboarding View
 
 struct OnboardingView: View {
-    @EnvironmentObject private var bluetoothManager: BluetoothDiscoveryManager
+    @StateObject private var bluetoothManager = BluetoothManager()
     @Binding var isComplete: Bool
     @State private var selectedDevice: (peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber)? = nil
     @State private var customName: String = ""
@@ -798,9 +799,8 @@ struct NameDeviceView: View {
 @main
 struct FamilyCalendarApp: App {
     @State private var isShowingSplash = true
-    @StateObject private var bluetoothManager = BluetoothDiscoveryManager.shared
+    @StateObject private var bluetoothManager = BluetoothManager()
     @StateObject private var calendarStore = CalendarStore.shared
-    @StateObject private var guidanceManager = GuidanceManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var body: some Scene {
@@ -816,7 +816,6 @@ struct FamilyCalendarApp: App {
             }
             .environmentObject(bluetoothManager)
             .environmentObject(calendarStore)
-            .environmentObject(guidanceManager)
             .onChange(of: hasCompletedOnboarding) { newValue in
                 // If onboarding just completed, prepare for showing guidance
                 // on the first view of the FamilyCalendarView
