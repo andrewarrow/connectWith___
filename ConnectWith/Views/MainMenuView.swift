@@ -418,7 +418,7 @@ extension NSNumber {
 #endif
 
 struct MainMenuView: View {
-    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @EnvironmentObject private var bluetoothManager: BluetoothDiscoveryManager
     @EnvironmentObject private var guidanceManager: GuidanceManager
     @State private var hasCheckedPermission = false
     @State private var showSettings = false
@@ -482,6 +482,15 @@ struct MainMenuView: View {
                     ) {
                         showDebugView = true
                     }
+                    
+                    // Also show a direct link to the Device Manager in debug mode
+                    MenuButton(
+                        title: "Device Manager", 
+                        iconName: "iphone.radiowaves.left.and.right", 
+                        color: .indigo
+                    ) {
+                        showDeviceList = true
+                    }
                     #endif
                 }
                 .padding(.vertical)
@@ -534,7 +543,9 @@ struct MainMenuView: View {
                 }
             }
             .sheet(isPresented: $showDeviceList) {
-                DeviceListView()
+                NearbyDevicesView()
+                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+                    .environmentObject(bluetoothManager)
             }
         }
     }
@@ -1370,5 +1381,6 @@ struct SettingsView: View {
 
 #Preview {
     MainMenuView()
-        .environmentObject(BluetoothManager())
+        .environmentObject(BluetoothDiscoveryManager.shared)
+        .environmentObject(GuidanceManager())
 }

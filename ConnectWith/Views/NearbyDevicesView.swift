@@ -6,100 +6,354 @@ import OSLog
 struct NearbyDevicesView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.presentationMode) private var presentationMode
-    @EnvironmentObject private var bluetoothManager: BluetoothManager
+    @EnvironmentObject private var bluetoothManager: BluetoothDiscoveryManager
+    
+    @State private var isRefreshing = false
+    @State private var showConnectionAlert = false
+    @State private var selectedDevice: BluetoothDevice?
+    @State private var showRenameSheet = false
+    @State private var newDeviceName = ""
     
     @FetchRequest(
         entity: NSEntityDescription.entity(forEntityName: "BluetoothDevice", in: PersistenceController.shared.container.viewContext)!,
         sortDescriptors: [NSSortDescriptor(key: "lastSeen", ascending: false)],
         animation: .default)
-    private var devices: FetchedResults<NSManagedObject>
+    private var devices: FetchedResults<BluetoothDevice>
     
     var body: some View {
         NavigationView {
-            List {
-                ForEach(devices, id: \NSManagedObject.objectID) { device in
-                    DeviceRow(device: device)
+            ZStack {
+                if devices.isEmpty {
+                    emptyStateView
+                } else {
+                    deviceListView
+                }
+                
+                // Loading overlay when scanning
+                if bluetoothManager.isScanning {
+                    scanningOverlay
                 }
             }
-            .navigationTitle("Nearby Devices")
+            .navigationTitle("Family Devices")
             .navigationBarItems(
                 leading: Button("Back") {
                     presentationMode.wrappedValue.dismiss()
                 },
                 trailing: Button(action: {
-                    bluetoothManager.startScanning()
+                    startScan()
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(.blue)
                 }
             )
+            .onAppear {
+                // Start scanning when view appears
+                if !bluetoothManager.isScanning {
+                    startScan()
+                }
+            }
+            .alert("Connect to Device", isPresented: $showConnectionAlert) {
+                Button("Connect") {
+                    if let device = selectedDevice,
+                       let uuid = UUID(uuidString: device.identifier) {
+                        connectToDevice(with: uuid)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let device = selectedDevice {
+                    Text("Would you like to connect to \(device.deviceName ?? "this device")?")
+                } else {
+                    Text("Would you like to connect to this device?")
+                }
+            }
+            .sheet(isPresented: $showRenameSheet) {
+                renameDeviceSheet
+            }
+        }
+    }
+    
+    // MARK: - View Components
+    
+    var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 70))
+                .foregroundColor(.gray)
+            
+            Text("No Family Devices Found")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.gray)
+            
+            Text("Tap the refresh button to search for family members' devices")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            
+            Button(action: {
+                startScan()
+            }) {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Scan for Devices")
+                }
+                .padding()
+                .foregroundColor(.white)
+                .background(Color.blue)
+                .cornerRadius(10)
+            }
+            .padding(.top)
+            
+            Spacer()
+        }
+    }
+    
+    var deviceListView: some View {
+        List {
+            Section(header: Text("Family Devices")) {
+                ForEach(devices, id: \.identifier) { device in
+                    DeviceRow(device: device, isLocalDevice: isLocalDevice(device))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedDevice = device
+                            showConnectionAlert = true
+                        }
+                        .contextMenu {
+                            Button(action: {
+                                selectedDevice = device
+                                newDeviceName = device.deviceName ?? "Family Member"
+                                showRenameSheet = true
+                            }) {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            
+                            Button(action: {
+                                if let uuid = UUID(uuidString: device.identifier) {
+                                    connectToDevice(with: uuid)
+                                }
+                            }) {
+                                Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+                            }
+                        }
+                }
+            }
+        }
+        .refreshable {
+            isRefreshing = true
+            startScan()
+            // Wait for scan duration and then update the flag
+            DispatchQueue.main.asyncAfter(deadline: .now() + bluetoothManager.currentScanningProfile.scanDuration) {
+                isRefreshing = false
+            }
+        }
+    }
+    
+    var scanningOverlay: some View {
+        VStack {
+            // Only show this if not in pull-to-refresh mode
+            if !isRefreshing {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.3))
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 20) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                                .frame(width: 100, height: 100)
+                            
+                            Circle()
+                                .trim(from: 0, to: bluetoothManager.scanningProgress)
+                                .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                .frame(width: 100, height: 100)
+                                .rotationEffect(.degrees(-90))
+                                .animation(.linear, value: bluetoothManager.scanningProgress)
+                            
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Text("Scanning for family devices...")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(20)
+                }
+            }
+        }
+    }
+    
+    var renameDeviceSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Rename Family Device")) {
+                    TextField("Device Name", text: $newDeviceName)
+                        .autocapitalization(.words)
+                    
+                    if let device = selectedDevice {
+                        Text("Device ID: \(device.identifier.prefix(8))...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Section {
+                    Button("Save") {
+                        if let device = selectedDevice {
+                            renameDevice(device, to: newDeviceName)
+                            showRenameSheet = false
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .foregroundColor(.blue)
+                }
+            }
+            .navigationTitle("Rename Device")
+            .navigationBarItems(trailing: Button("Cancel") {
+                showRenameSheet = false
+            })
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func startScan() {
+        if bluetoothManager.permissionGranted {
+            bluetoothManager.startAdaptiveScanning()
+        } else {
+            bluetoothManager.showPermissionAlert = true
+        }
+    }
+    
+    private func isLocalDevice(_ device: BluetoothDevice) -> Bool {
+        // Check if this device is the user's local device
+        let localId = UIDevice.current.identifierForVendor?.uuidString ?? ""
+        return device.identifier == localId
+    }
+    
+    private func connectToDevice(with uuid: UUID) {
+        // Find the peripheral with this UUID
+        for device in bluetoothManager.nearbyDevices {
+            if device.peripheral.identifier == uuid {
+                bluetoothManager.connectToDevice(device.peripheral)
+                break
+            }
+        }
+    }
+    
+    private func renameDevice(_ device: BluetoothDevice, to newName: String) {
+        PersistenceController.shared.performBackgroundTask { context in
+            let fetchRequest = BluetoothDevice.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "identifier == %@", device.identifier)
+            
+            do {
+                let results = try context.fetch(fetchRequest)
+                if let deviceToRename = results.first {
+                    deviceToRename.deviceName = newName
+                    try context.save()
+                    Logger.bluetooth.info("Renamed device \(device.identifier) to \(newName)")
+                }
+            } catch {
+                Logger.bluetooth.error("Failed to rename device: \(error.localizedDescription)")
+            }
         }
     }
 }
 
 struct DeviceRow: View {
-    let device: NSManagedObject
+    let device: BluetoothDevice
+    let isLocalDevice: Bool
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                // Device icon with better contrast
-                ZStack {
-                    Circle()
-                        .fill(colorScheme == .dark ? Color.gray.opacity(0.3) : Color.blue.opacity(0.1))
-                        .frame(width: 36, height: 36)
-                    
-                    Image(systemName: "iphone")
-                        .foregroundColor(colorScheme == .dark ? .cyan : .blue)
-                }
+        HStack(spacing: 16) {
+            // Device icon with better contrast
+            ZStack {
+                Circle()
+                    .fill(deviceColor)
+                    .frame(width: 44, height: 44)
                 
-                VStack(alignment: .leading) {
-                    Text(device.value(forKey: "deviceName") as? String ?? "Unknown Device")
+                Image(systemName: deviceIcon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(device.deviceName ?? "Unknown Device")
                         .font(.headline)
                         .foregroundColor(.primary) // Uses system color for best contrast
                     
-                    if let identifier = device.value(forKey: "identifier") as? String {
-                        Text("ID: \(identifier.prefix(8))...")
+                    if isLocalDevice {
+                        Text("This Device")
                             .font(.caption)
-                            .foregroundColor(.secondary) // Better than hardcoded gray
-                    }
-                    
-                    if let lastSeen = device.value(forKey: "lastSeen") as? Date {
-                        Text("Last seen: \(formattedDate(lastSeen))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    if device.value(forKey: "manufacturerData") != nil {
-                        HStack {
-                            Text("Manufacturer data")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            // High contrast badge for important information
-                            Text("Available")
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    colorScheme == .dark ?
-                                        Color.mint.opacity(0.8) : // Dark mode version
-                                        Color.blue.opacity(0.8)  // Light mode version
-                                )
-                                .foregroundColor(
-                                    colorScheme == .dark ?
-                                        Color.black : // Dark text on light background
-                                        Color.white   // Light text on dark background
-                                )
-                                .cornerRadius(4)
-                        }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.2))
+                            .foregroundColor(.blue)
+                            .cornerRadius(4)
                     }
                 }
+                
+                if let lastSeen = device.lastSeen {
+                    Text("Last seen: \(formattedDate(lastSeen))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(device.isRecentlyActive ? .green : .gray)
+                    
+                    Text(connectionStatus)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.gray)
+                .font(.caption)
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private var deviceIcon: String {
+        if device.supports12xSync {
+            return "iphone.radiowaves.left.and.right"
+        } else {
+            return "iphone"
+        }
+    }
+    
+    private var deviceColor: Color {
+        if isLocalDevice {
+            return .blue
+        } else if device.supports12xSync {
+            return .green
+        } else {
+            return .gray
+        }
+    }
+    
+    private var connectionStatus: String {
+        if isLocalDevice {
+            return "Local Device"
+        } else if device.isRecentlyActive {
+            return "Recently Active"
+        } else {
+            return "Not Connected"
         }
     }
     
@@ -110,9 +364,8 @@ struct DeviceRow: View {
     }
 }
 
-
 #Preview {
     NearbyDevicesView()
         .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
-        .environmentObject(BluetoothManager())
+        .environmentObject(BluetoothDiscoveryManager.shared)
 }
