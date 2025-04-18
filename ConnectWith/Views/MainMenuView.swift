@@ -425,6 +425,7 @@ struct MainMenuView: View {
     @State private var showDeviceList = false
     @State private var showCalendarView = false
     @State private var showDebugView = false
+    @State private var showHistoryView = false
     @State private var customDeviceName = UserDefaults.standard.string(forKey: "DeviceCustomName") ?? ""
     // Added to track if we're in onboarding mode (should always be false here since onboarding is completed)
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -463,6 +464,14 @@ struct MainMenuView: View {
                         color: .blue
                     ) {
                         showDeviceList = true
+                    }
+                    
+                    MenuButton(
+                        title: "Edit History", 
+                        iconName: "clock.arrow.circlepath", 
+                        color: .orange
+                    ) {
+                        showHistoryView = true
                     }
                     
                     MenuButton(
@@ -546,6 +555,10 @@ struct MainMenuView: View {
                 NearbyDevicesView()
                     .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
                     .environmentObject(bluetoothManager)
+            }
+            .sheet(isPresented: $showHistoryView) {
+                HistoryListView()
+                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             }
         }
     }
