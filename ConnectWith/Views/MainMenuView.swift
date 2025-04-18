@@ -3,6 +3,203 @@ import CoreBluetooth
 import CoreData
 import OSLog
 
+// Import our calendar components directly
+struct CalendarViewContainer: View {
+    @State private var events = [
+        CalendarEvent(month: "January", title: "Event", location: "Home", day: 1, color: .blue),
+        CalendarEvent(month: "February", title: "Event", location: "Home", day: 1, color: .pink),
+        CalendarEvent(month: "March", title: "Event", location: "Home", day: 1, color: .green),
+        CalendarEvent(month: "April", title: "Event", location: "Home", day: 1, color: .orange),
+        CalendarEvent(month: "May", title: "Event", location: "Home", day: 1, color: .purple),
+        CalendarEvent(month: "June", title: "Event", location: "Home", day: 1, color: .yellow),
+        CalendarEvent(month: "July", title: "Event", location: "Home", day: 1, color: .red),
+        CalendarEvent(month: "August", title: "Event", location: "Home", day: 1, color: .teal),
+        CalendarEvent(month: "September", title: "Event", location: "Home", day: 1, color: .indigo),
+        CalendarEvent(month: "October", title: "Event", location: "Home", day: 1, color: .brown),
+        CalendarEvent(month: "November", title: "Event", location: "Home", day: 1, color: .cyan),
+        CalendarEvent(month: "December", title: "Event", location: "Home", day: 1, color: .mint)
+    ]
+    @State private var currentIndex: Int = 0
+    @Environment(\.presentationMode) private var presentationMode
+    
+    struct CalendarEvent: Identifiable {
+        var id = UUID()
+        var month: String
+        var title: String
+        var location: String
+        var day: Int
+        var color: Color
+    }
+    
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            
+            VStack {
+                HStack {
+                    Button("Done") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .padding()
+                    
+                    Spacer()
+                }
+                
+                Text("Family Calendar")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                Text("Swipe to browse your events")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom)
+                
+                TabView(selection: $currentIndex) {
+                    ForEach(Array(events.indices), id: \.self) { index in
+                        EventCardView(event: $events[index])
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+                .frame(height: 240)
+                .padding(.vertical)
+                
+                Spacer()
+                
+                VStack(alignment: .leading) {
+                    Text("Current Event: \(events[currentIndex].month)")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal)
+                    
+                    Divider()
+                    
+                    HStack {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Title: \(events[currentIndex].title)", systemImage: "pencil")
+                            Label("Location: \(events[currentIndex].location)", systemImage: "mappin.and.ellipse")
+                            Label("Date: \(events[currentIndex].day) \(events[currentIndex].month)", systemImage: "calendar")
+                        }
+                        .padding()
+                        
+                        Spacer()
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.secondarySystemBackground))
+                )
+                .padding()
+            }
+        }
+    }
+    
+    struct EventCardView: View {
+        @Binding var event: CalendarEvent
+        @State private var isEditing = false
+        @State private var title: String
+        @State private var location: String
+        @State private var day: Int
+        
+        init(event: Binding<CalendarEvent>) {
+            self._event = event
+            self._title = State(initialValue: event.wrappedValue.title)
+            self._location = State(initialValue: event.wrappedValue.location)
+            self._day = State(initialValue: event.wrappedValue.day)
+        }
+        
+        var body: some View {
+            VStack {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(event.color)
+                        .shadow(radius: 5)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(event.month)
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Spacer()
+                            Button(action: {
+                                isEditing.toggle()
+                            }) {
+                                Image(systemName: isEditing ? "checkmark.circle" : "pencil.circle")
+                                    .foregroundColor(.white)
+                                    .font(.title2)
+                            }
+                        }
+                        
+                        if isEditing {
+                            editingView
+                        } else {
+                            displayView
+                        }
+                    }
+                    .padding()
+                }
+                .frame(height: 180)
+                .padding(.horizontal)
+            }
+        }
+        
+        var displayView: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(event.title)
+                    .font(.title)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                Text(event.location)
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                HStack {
+                    Text("Day: \(event.day)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                }
+            }
+        }
+        
+        var editingView: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("Title", text: $title)
+                    .font(.title3)
+                    .foregroundColor(.white)
+                    .background(Color.white.opacity(0.2))
+                    .cornerRadius(8)
+                    .padding(5)
+                    .onChange(of: title) { newValue in
+                        event.title = newValue
+                    }
+                
+                TextField("Location", text: $location)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .background(Color.white.opacity(0.2))
+                    .cornerRadius(8)
+                    .padding(5)
+                    .onChange(of: location) { newValue in
+                        event.location = newValue
+                    }
+                
+                Stepper("Day: \(day)", value: $day, in: 1...31)
+                    .foregroundColor(.white)
+                    .onChange(of: day) { newValue in
+                        event.day = newValue
+                    }
+            }
+        }
+    }
+}
+
 #if DEBUG
 // Simple debug view that doesn't import BluetoothDebugView
 struct DebugInfoView: View {
@@ -253,7 +450,7 @@ struct MainMenuView: View {
                 VStack(spacing: 15) {
                     MenuButton(
                         title: "Family Calendar", 
-                        iconName: "calendar", 
+                        iconName: "calendar.badge.plus", 
                         color: .purple
                     ) {
                         showCalendarView = true
@@ -312,7 +509,8 @@ struct MainMenuView: View {
                 }
             }
             .sheet(isPresented: $showCalendarView) {
-                FamilyCalendarView()
+                // Create the calendar view here directly to avoid scope issues
+                CalendarViewContainer()
             }
             #if DEBUG
             .sheet(isPresented: $showDebugView) {
@@ -340,142 +538,7 @@ struct MainMenuView: View {
     }
 }
 
-struct FamilyCalendarView: View {
-    @Environment(\.presentationMode) private var presentationMode
-    @EnvironmentObject private var bluetoothManager: BluetoothManager
-    @EnvironmentObject private var calendarStore: CalendarStore
-    @State private var events: [CalendarEvent] = []
-    @State private var showingAddEvent = false
-    @State private var showingSyncInfo = false
-    @State private var selectedEvent: CalendarEvent?
-    
-    var body: some View {
-        NavigationView {
-            VStack {
-                // Sync status bar
-                if bluetoothManager.syncInProgress {
-                    HStack {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .padding(.trailing, 5)
-                            
-                        Text("Syncing with family members...")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 5)
-                } else if let lastSyncTime = bluetoothManager.lastSyncTime {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                        
-                        Text("Last synced: \(timeAgoString(from: lastSyncTime))")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            bluetoothManager.scanAndSyncWithFamilyMembers()
-                        }) {
-                            Text("Sync Now")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 5)
-                }
-                
-                List {
-                    ForEach(events) { event in
-                        EventRow(
-                            event: event,
-                            syncCount: calendarStore.getSyncCountForEvent(id: event.id)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedEvent = event
-                            showingSyncInfo = true
-                        }
-                    }
-                    .onDelete(perform: removeEvents)
-                }
-                
-                if events.isEmpty {
-                    VStack(spacing: 20) {
-                        Spacer()
-                        
-                        Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        
-                        Text("No Events Planned")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.gray)
-                        
-                        Text("Tap the + button to start planning your family outings")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        Spacer()
-                    }
-                }
-            }
-            .navigationTitle("12× Calendar")
-            .navigationBarItems(
-                leading: Button("Back") {
-                    presentationMode.wrappedValue.dismiss()
-                },
-                trailing: Button(action: {
-                    showingAddEvent = true
-                }) {
-                    Image(systemName: "plus")
-                }
-            )
-            .sheet(isPresented: $showingAddEvent) {
-                AddEventView { event in
-                    calendarStore.addEvent(event)
-                    refreshEvents()
-                    showingAddEvent = false
-                }
-            }
-            .sheet(isPresented: $showingSyncInfo) {
-                if let event = selectedEvent {
-                    EventSyncInfoView(event: event)
-                }
-            }
-            .onAppear {
-                refreshEvents()
-            }
-        }
-    }
-    
-    func refreshEvents() {
-        events = calendarStore.getAllEvents()
-    }
-    
-    func removeEvents(at offsets: IndexSet) {
-        for index in offsets {
-            let event = events[index]
-            calendarStore.removeEvent(id: event.id)
-        }
-        refreshEvents()
-    }
-    
-    func timeAgoString(from date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-}
+// Using our new Family Calendar implementation with month cards
 
 struct EventSyncInfoView: View {
     @Environment(\.presentationMode) private var presentationMode

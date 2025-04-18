@@ -796,7 +796,7 @@ struct NameDeviceView: View {
 }
 
 @main
-struct TwelveXApp: App {
+struct FamilyCalendarApp: App {
     @State private var isShowingSplash = true
     @StateObject private var bluetoothManager = BluetoothManager()
     @StateObject private var calendarStore = CalendarStore.shared
