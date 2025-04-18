@@ -127,7 +127,7 @@ struct FamilyCalendarView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isEditingEvent) {
                 if let month = selectedMonth {
-                    EventEditSheet(
+                    EventEditView(
                         month: month,
                         event: selectedEvent,
                         onSave: { title, location, day in
@@ -145,6 +145,7 @@ struct FamilyCalendarView: View {
                             }
                         }
                     )
+                    .environment(\.managedObjectContext, viewContext)
                 }
             }
         }

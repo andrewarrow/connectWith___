@@ -21,7 +21,7 @@ Ensure the interface is intuitive and follows iOS design guidelines.
 Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation.
 
 # Subtasks:
-## 1. Create Modal Presentation and Form UI [pending]
+## 1. Create Modal Presentation and Form UI [completed]
 ### Dependencies: None
 ### Description: Design and implement the modal interface for event creation and editing, including all form elements and basic layout.
 ### Details:
