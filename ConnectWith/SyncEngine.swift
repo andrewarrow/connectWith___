@@ -634,17 +634,96 @@ class SyncEngine: ObservableObject {
                 var historyReceived = 0
                 var conflicts = 0
                 
-                // Import events
+                // Get local and base events for conflict detection
+                var localEvents: [EventDTO] = []
+                var baseEvents: [EventDTO] = []
+                
+                // First, get local events that might conflict
+                do {
+                    let eventRepository = EventRepository(context: context)
+                    let events = eventRepository.fetch(predicate: nil, sortDescriptors: nil)
+                    
+                    // Convert events to DTOs for conflict detection
+                    localEvents = events.map { EventDTO.from(event: $0) }
+                    
+                    // Get last sync time for base events
+                    let lastSyncTime = self.syncHistoryManager.getLastSyncTime(bluetoothIdentifier: deviceId)
+                    
+                    if let syncTime = lastSyncTime {
+                        // Query for events as they were at last sync time (base version)
+                        // This is simplified - in a real implementation, we would need to restore events
+                        // to their state at the last sync time using edit history
+                        let baseEventsFetch = eventRepository.fetch(
+                            predicate: NSPredicate(format: "lastModifiedAt <= %@", syncTime as NSDate),
+                            sortDescriptors: nil
+                        )
+                        baseEvents = baseEventsFetch.map { EventDTO.from(event: $0) }
+                    }
+                } catch {
+                    Logger.sync.error("Error fetching local events for conflict detection: \(error.localizedDescription)")
+                }
+                
+                // Deserialize remote events for processing
+                var remoteEvents: [EventDTO] = []
+                var detectableConflicts = false
+                
                 if eventsData.count > 0 {
-                    DataExchangeProtocol.deserializeAndImportEvents(data: eventsData, context: context) { result in
-                        switch result {
-                        case .success(let count):
-                            eventsReceived = count
+                    // Parse the events data into DTOs
+                    if let eventBatch: DataExchangeProtocol.EventBatch = DataExchangeProtocol.deserialize(eventsData, to: DataExchangeProtocol.EventBatch.self) {
+                        remoteEvents = eventBatch.events
+                        detectableConflicts = !remoteEvents.isEmpty && !localEvents.isEmpty
+                        
+                        // Process conflicts if we have potential conflicts
+                        if detectableConflicts {
+                            // Detect conflicts between local and remote events
+                            let detectedConflicts = ConflictDetector.detectEventConflicts(
+                                localEvents: localEvents,
+                                remoteEvents: remoteEvents,
+                                baseEvents: baseEvents.isEmpty ? nil : baseEvents
+                            )
                             
-                        case .failure(let error):
-                            promise(.failure(SyncError.dataFormatError("Failed to import events: \(error.localizedDescription)")))
-                            return
+                            conflicts = detectedConflicts.count
+                            
+                            if conflicts > 0 {
+                                Logger.sync.info("Detected \(conflicts) event conflicts with device \(deviceId)")
+                                
+                                // Use the conflict resolution engine to resolve the conflicts
+                                let resolutionEngine = ConflictResolutionEngine.shared
+                                for conflict in detectedConflicts {
+                                    let resolution = resolutionEngine.resolveEventConflict(
+                                        baseEvent: conflict.base,
+                                        localEvent: conflict.local,
+                                        remoteEvent: conflict.remote,
+                                        context: context
+                                    )
+                                    
+                                    Logger.sync.info("Resolved conflict for event \(resolution.entityId): \(resolution.resolution.rawValue)")
+                                }
+                                
+                                // After resolving conflicts, save the context
+                                do {
+                                    try context.save()
+                                } catch {
+                                    Logger.sync.error("Error saving context after conflict resolution: \(error.localizedDescription)")
+                                }
+                            }
                         }
+                        
+                        // Import remaining non-conflicting remote events
+                        DataExchangeProtocol.deserializeAndImportEvents(data: eventsData, context: context) { result in
+                            switch result {
+                            case .success(let count):
+                                eventsReceived = count
+                                
+                            case .failure(let error):
+                                promise(.failure(SyncError.dataFormatError("Failed to import events: \(error.localizedDescription)")))
+                                return
+                            }
+                        }
+                    } else {
+                        Logger.sync.error("Failed to deserialize remote events batch")
+                        promise(.failure(SyncError.dataFormatError("Failed to deserialize events batch")))
+                        return
                     }
                 }
                 
@@ -680,7 +759,7 @@ class SyncEngine: ObservableObject {
                     deviceName: deviceName,
                     success: true,
                     eventsReceived: eventsReceived,
-                    eventsSent: eventsData.count > 0 ? 1 : 0, // Simplified for now
+                    eventsSent: eventsData.count > 0 ? 1 : 0,
                     conflicts: conflicts
                 )
                 

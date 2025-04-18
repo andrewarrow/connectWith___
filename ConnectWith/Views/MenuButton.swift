@@ -36,6 +36,5 @@ struct MenuButton: View {
 
 #Preview {
     MenuButton(title: "Connect", iconName: "person.2.fill", color: .blue)
-        .previewLayout(.sizeThatFits)
         .padding()
 }

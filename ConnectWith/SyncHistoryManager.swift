@@ -50,6 +50,8 @@ class SyncHistoryManager {
     ///   - eventsReceived: Number of events received during sync
     ///   - eventsSent: Number of events sent during sync
     ///   - conflicts: Number of conflicts detected during sync
+    ///   - resolutionMethod: Method used to resolve conflicts (if any)
+    ///   - conflictDetails: Detailed information about resolved conflicts
     /// - Returns: The created sync log, or nil if creation failed
     func createSyncLog(
         deviceId: String,
@@ -57,7 +59,8 @@ class SyncHistoryManager {
         eventsReceived: Int,
         eventsSent: Int,
         conflicts: Int = 0,
-        resolutionMethod: String? = nil
+        resolutionMethod: String? = nil,
+        conflictDetails: [String]? = nil
     ) -> SyncLog? {
         var createdLog: SyncLog?
         
@@ -77,13 +80,26 @@ class SyncHistoryManager {
             log.resolutionMethod = resolutionMethod
             
             // Generate summary details
-            let details = """
+            var detailsText = """
             Synchronized with \(deviceName ?? "Unknown Device")
             Received: \(eventsReceived) events
             Sent: \(eventsSent) events
             Conflicts: \(conflicts)
             """
-            log.details = details
+            
+            // Add conflict resolution details if available
+            if conflicts > 0 {
+                detailsText += "\nResolution Method: \(resolutionMethod ?? "automatic")"
+                
+                if let details = conflictDetails, !details.isEmpty {
+                    detailsText += "\n\nConflict Details:"
+                    for detail in details {
+                        detailsText += "\n- \(detail)"
+                    }
+                }
+            }
+            
+            log.details = detailsText
             
             do {
                 try context.save()
@@ -103,6 +119,58 @@ class SyncHistoryManager {
         }
         
         return createdLog
+    }
+    
+    /// Updates an existing sync log with conflict resolution information
+    /// - Parameters:
+    ///   - syncLogId: The ID of the sync log to update
+    ///   - conflicts: Number of conflicts detected
+    ///   - resolutionMethod: Method used to resolve conflicts
+    ///   - resolvedFields: List of fields that had conflicts resolved
+    ///   - preservedValues: Whether values were preserved during resolution
+    func updateSyncLogWithConflictInfo(
+        syncLogId: UUID,
+        conflicts: Int,
+        resolutionMethod: String,
+        resolvedFields: [String],
+        preservedValues: Bool
+    ) {
+        PersistenceController.shared.performBackgroundTask { context in
+            // Fetch the sync log
+            let fetchRequest = SyncLog.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "id == %@", syncLogId as CVarArg)
+            
+            do {
+                let results = try context.fetch(fetchRequest)
+                guard let syncLog = results.first else {
+                    Logger.bluetooth.error("Could not find sync log with ID \(syncLogId) to update with conflict info")
+                    return
+                }
+                
+                // Update conflict information
+                syncLog.conflicts = Int32(conflicts)
+                syncLog.resolutionMethod = resolutionMethod
+                
+                // Add conflict details to the existing details
+                var detailsText = syncLog.details ?? ""
+                detailsText += "\n\nConflict Resolution Details:"
+                detailsText += "\n- \(conflicts) conflicts detected"
+                detailsText += "\n- Resolution method: \(resolutionMethod)"
+                
+                if !resolvedFields.isEmpty {
+                    detailsText += "\n- Resolved fields: \(resolvedFields.joined(separator: ", "))"
+                }
+                
+                detailsText += "\n- Data preservation: \(preservedValues ? "All values preserved" : "Latest values used")"
+                
+                syncLog.details = detailsText
+                
+                try context.save()
+                Logger.bluetooth.info("Updated sync log \(syncLogId) with conflict resolution information")
+            } catch {
+                Logger.bluetooth.error("Failed to update sync log with conflict info: \(error.localizedDescription)")
+            }
+        }
     }
     
     /// Gets sync statistics for a device

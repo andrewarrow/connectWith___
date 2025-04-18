@@ -1380,7 +1380,6 @@ struct SettingsView: View {
 
 
 #Preview {
+    // Use mock objects for previews
     MainMenuView()
-        .environmentObject(BluetoothDiscoveryManager.shared)
-        .environmentObject(GuidanceManager())
 }
