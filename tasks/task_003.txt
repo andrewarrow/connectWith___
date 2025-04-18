@@ -19,3 +19,82 @@ Ensure the interface is intuitive and follows iOS design guidelines.
 
 # Test Strategy:
 Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation.
+
+# Subtasks:
+## 1. Create Modal Presentation and Form UI [pending]
+### Dependencies: None
+### Description: Design and implement the modal interface for event creation and editing, including all form elements and basic layout.
+### Details:
+Implementation details:
+1. Create a new SwiftUI view called `EventEditView` that will serve as the modal
+2. Implement the form layout with the following elements:
+   - Title input field with appropriate styling
+   - Location input field
+   - Date picker component configured to show only dates in the selected month
+   - Preview section (placeholder for now)
+   - Confirmation and Cancel buttons at the bottom
+3. Set up the modal presentation logic to appear when a month card is tapped
+4. Implement basic state management for form fields
+5. Style the interface according to iOS design guidelines
+6. Add accessibility labels and hints for all form elements
+
+Testing approach:
+- Verify modal appears and dismisses correctly
+- Check that all UI elements render properly
+- Test keyboard appearance and dismissal
+- Verify basic form navigation works
+- Test on different device sizes to ensure responsive layout
+
+## 2. Implement Form Validation and Preview Functionality [pending]
+### Dependencies: 3.1
+### Description: Add validation logic to the form fields and create the live preview functionality to show how the card will look with changes.
+### Details:
+Implementation details:
+1. Add validation logic for the title field:
+   - Ensure it's not empty
+   - Set character limits if needed
+   - Show appropriate error messages
+2. Implement validation for the location field
+3. Add validation for the date picker to ensure it stays within the selected month
+4. Create the preview component that updates in real-time as users make changes:
+   - Design a miniature version of the month card
+   - Ensure it reflects all current form values
+   - Update it dynamically as users type or select options
+5. Implement visual feedback for validation errors
+6. Add form submission prevention if validation fails
+
+Testing approach:
+- Test all validation rules with valid and invalid inputs
+- Verify error messages appear correctly
+- Check that the preview updates accurately with form changes
+- Test edge cases like very long text inputs
+- Verify the preview accurately represents how the final card will look
+
+## 3. Implement Data Persistence and Edit History Tracking [pending]
+### Dependencies: 3.1, 3.2
+### Description: Add Core Data integration to save event changes and implement the edit history tracking functionality.
+### Details:
+Implementation details:
+1. Create Core Data integration:
+   - Connect form submission to Core Data save operations
+   - Implement logic to update existing events or create new ones
+   - Handle potential save errors gracefully
+2. Implement edit history tracking:
+   - Create or update the EditHistory model in Core Data
+   - Record timestamp of edits
+   - Store the device identifier for edit attribution
+   - Track what fields were changed
+3. Add confirmation dialog before saving changes
+4. Implement success/failure feedback after save attempts
+5. Add logic to populate the form with existing data when editing
+6. Ensure proper cleanup of Core Data context if the user cancels
+7. Optimize for performance with potential batch updates
+
+Testing approach:
+- Verify data is correctly saved to Core Data
+- Test editing existing events loads the correct data
+- Confirm edit history is properly recorded
+- Test cancellation doesn't affect stored data
+- Verify device attribution is correctly recorded
+- Test error handling with simulated Core Data failures
+

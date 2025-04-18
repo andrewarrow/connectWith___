@@ -8,7 +8,41 @@
       "dependencies": [],
       "priority": "high",
       "details": "Create a Core Data stack with the following models:\n1. Event: UUID, month (1-12), title, location, day (1-31), createdAt, lastModifiedAt, lastModifiedBy, color\n2. EditHistory: UUID, eventId, deviceId, deviceName, previousTitle, newTitle, previousLocation, newLocation, previousDay, newDay, timestamp\n3. FamilyDevice: UUID, bluetoothIdentifier, customName, lastSyncTimestamp, isLocalDevice\n4. SyncLog: UUID, timestamp, deviceId, deviceName, eventsReceived, eventsSent, conflicts, resolutionMethod, details\n\nImplement CRUD operations for all entities and ensure data encryption using iOS data protection.",
-      "testStrategy": "Write unit tests for each model and CRUD operation. Verify data persistence across app restarts. Test data encryption and ensure proper relationships between entities."
+      "testStrategy": "Write unit tests for each model and CRUD operation. Verify data persistence across app restarts. Test data encryption and ensure proper relationships between entities.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Create Core Data Model and Stack",
+          "description": "Define the data model schema with all required entities and set up the Core Data stack with proper encryption",
+          "dependencies": [],
+          "details": "1. Create a new Core Data model file (.xcdatamodeld)\n2. Define the Event entity with attributes: UUID, month (Int16), title (String), location (String), day (Int16), createdAt (Date), lastModifiedAt (Date), lastModifiedBy (String), color (String)\n3. Define the EditHistory entity with attributes: UUID, eventId (String), deviceId (String), deviceName (String), previousTitle (String), newTitle (String), previousLocation (String), newLocation (String), previousDay (Int16), newDay (Int16), timestamp (Date)\n4. Define the FamilyDevice entity with attributes: UUID, bluetoothIdentifier (String), customName (String), lastSyncTimestamp (Date), isLocalDevice (Boolean)\n5. Define the SyncLog entity with attributes: UUID, timestamp (Date), deviceId (String), deviceName (String), eventsReceived (Int32), eventsSent (Int32), conflicts (Int32), resolutionMethod (String), details (String)\n6. Set up relationships between entities (e.g., Event to EditHistory)\n7. Create a CoreDataManager class with:\n   - Persistent container setup\n   - Context management (main and background)\n   - Data protection configuration using NSFileProtectionComplete\n8. Implement database initialization and migration handling\n9. Test the Core Data stack initialization and verify data protection is enabled",
+          "status": "pending",
+          "parentTaskId": 1
+        },
+        {
+          "id": 2,
+          "title": "Implement CRUD Operations for All Entities",
+          "description": "Create a comprehensive data access layer with CRUD operations for all entities",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Create a DataRepository protocol defining generic CRUD operations\n2. Implement EventRepository:\n   - Create/add new events\n   - Retrieve events (by UUID, month, or all)\n   - Update event properties\n   - Delete events\n   - Query events by various parameters\n3. Implement EditHistoryRepository:\n   - Record edit history entries\n   - Retrieve history for specific events\n   - Query history by device or timeframe\n4. Implement FamilyDeviceRepository:\n   - Register devices\n   - Update device information\n   - Get local device\n   - List all family devices\n5. Implement SyncLogRepository:\n   - Create sync log entries\n   - Retrieve logs by timeframe or device\n6. Add transaction support for operations that modify multiple entities\n7. Implement error handling and recovery mechanisms\n8. Create unit tests for each repository:\n   - Test all CRUD operations\n   - Verify constraints and validation\n   - Test edge cases and error conditions",
+          "status": "pending",
+          "parentTaskId": 1
+        },
+        {
+          "id": 3,
+          "title": "Create Data Access Facade and Encryption Verification",
+          "description": "Implement a unified data access facade and ensure proper data encryption",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "1. Create a DataManager facade class that:\n   - Provides a simplified interface to all repositories\n   - Handles complex operations involving multiple entities\n   - Manages data consistency across entities\n2. Implement data encryption verification:\n   - Add methods to verify encryption status\n   - Create a utility to check if data protection is active\n   - Add logging for encryption-related events\n3. Implement data migration utilities:\n   - Version migration support\n   - Data integrity checks\n4. Add performance optimizations:\n   - Implement caching for frequently accessed data\n   - Add batch operations for better performance\n5. Create integration tests:\n   - Test the complete data flow through the facade\n   - Verify data consistency across repositories\n   - Test encryption by examining the database file\n   - Measure and optimize performance\n6. Document the API:\n   - Create usage examples\n   - Document thread safety considerations\n   - Add inline documentation for all public methods",
+          "status": "pending",
+          "parentTaskId": 1
+        }
+      ]
     },
     {
       "id": 2,
@@ -20,7 +54,41 @@
       ],
       "priority": "high",
       "details": "Design a card-based interface inspired by iOS Wallet passes with:\n1. 12 cards in a scrollable view, one for each month\n2. Unique color coding for each month\n3. Card layout showing month name, event title prominently, with date and location in smaller text\n4. Empty state design for months without events\n5. Support for Dynamic Type and VoiceOver accessibility\n6. Tap interaction to open edit interface\n\nImplement using UICollectionView or SwiftUI equivalent with custom card views.",
-      "testStrategy": "Create UI tests for card rendering, scrolling behavior, and tap interactions. Test accessibility features including VoiceOver and Dynamic Type. Verify color contrast meets accessibility standards."
+      "testStrategy": "Create UI tests for card rendering, scrolling behavior, and tap interactions. Test accessibility features including VoiceOver and Dynamic Type. Verify color contrast meets accessibility standards.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Set up scrollable collection view structure for monthly cards",
+          "description": "Create the foundational scrollable view that will house the 12 monthly event cards, establishing the core layout and navigation structure.",
+          "dependencies": [],
+          "details": "Implementation details:\n1. Create a new UICollectionViewController or SwiftUI List/ScrollView component\n2. Configure the layout for horizontal scrolling with paging enabled\n3. Set up the data model to represent 12 months with optional event data\n4. Implement the basic collection view data source methods or SwiftUI ForEach structure\n5. Add navigation controls or gestures for moving between months\n6. Ensure the collection view properly handles device rotation and different screen sizes\n7. Test the scrolling behavior and basic layout with placeholder card views\n\nTesting approach:\n- Verify smooth scrolling between placeholder cards\n- Confirm layout adapts to different device sizes and orientations\n- Validate that 12 cards are displayed in the correct order",
+          "status": "pending",
+          "parentTaskId": 2
+        },
+        {
+          "id": 2,
+          "title": "Design and implement individual month card components with styling",
+          "description": "Create the visual design for each monthly card, including color coding, typography hierarchy, and layout for event information display.",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation details:\n1. Create a custom UICollectionViewCell or SwiftUI View for the card design\n2. Implement the iOS Wallet pass-inspired visual style with rounded corners and shadow effects\n3. Define a color palette with 12 distinct colors for month-specific styling\n4. Structure the card layout with:\n   - Month name in prominent position\n   - Event title with emphasized typography\n   - Date and location information in smaller text\n5. Create a separate design for the empty state when no event exists\n6. Add visual polish with appropriate spacing, padding, and typography\n7. Implement animations for card selection/focus\n\nTesting approach:\n- Review visual design on different devices to ensure consistency\n- Verify color contrast meets accessibility standards\n- Test with sample event data to ensure text fits appropriately\n- Validate empty state design appears correctly",
+          "status": "pending",
+          "parentTaskId": 2
+        },
+        {
+          "id": 3,
+          "title": "Implement card interactions and accessibility features",
+          "description": "Add tap gesture handling for card editing, implement Dynamic Type support, and ensure VoiceOver compatibility for the entire monthly cards interface.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation details:\n1. Implement tap gesture recognizer or button action to trigger the edit interface\n2. Create a simple transition animation when a card is selected\n3. Add haptic feedback for card selection\n4. Implement Dynamic Type support:\n   - Use system fonts or scalable custom fonts\n   - Test with all accessibility text sizes\n   - Ensure layout adapts to larger text sizes\n5. Add VoiceOver accessibility:\n   - Provide meaningful accessibility labels for each card\n   - Include appropriate traits (e.g., button)\n   - Add accessibility hints for available actions\n   - Test navigation between cards with VoiceOver\n6. Implement proper semantic context for screen readers\n\nTesting approach:\n- Test tap interactions open the correct edit interface\n- Verify Dynamic Type works at all size settings\n- Conduct VoiceOver testing to ensure all elements are properly announced\n- Validate that users can navigate and interact with cards using assistive technologies",
+          "status": "pending",
+          "parentTaskId": 2
+        }
+      ]
     },
     {
       "id": 3,
@@ -33,7 +101,41 @@
       ],
       "priority": "high",
       "details": "Create a modal edit interface that appears when a month card is tapped, containing:\n1. Title input field with appropriate validation\n2. Location input field\n3. Date picker limited to the selected month\n4. Preview of how the card will look with changes\n5. Confirmation and cancel buttons\n6. Logic to save changes to Core Data\n7. Code to update the EditHistory when changes are made\n8. Device identifier tracking for edit attribution\n\nEnsure the interface is intuitive and follows iOS design guidelines.",
-      "testStrategy": "Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation."
+      "testStrategy": "Test form validation, data saving, and UI state updates. Verify edit history is properly recorded with all required fields. Test edge cases like empty fields and cancellation.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Create Modal Presentation and Form UI",
+          "description": "Design and implement the modal interface for event creation and editing, including all form elements and basic layout.",
+          "dependencies": [],
+          "details": "Implementation details:\n1. Create a new SwiftUI view called `EventEditView` that will serve as the modal\n2. Implement the form layout with the following elements:\n   - Title input field with appropriate styling\n   - Location input field\n   - Date picker component configured to show only dates in the selected month\n   - Preview section (placeholder for now)\n   - Confirmation and Cancel buttons at the bottom\n3. Set up the modal presentation logic to appear when a month card is tapped\n4. Implement basic state management for form fields\n5. Style the interface according to iOS design guidelines\n6. Add accessibility labels and hints for all form elements\n\nTesting approach:\n- Verify modal appears and dismisses correctly\n- Check that all UI elements render properly\n- Test keyboard appearance and dismissal\n- Verify basic form navigation works\n- Test on different device sizes to ensure responsive layout",
+          "status": "pending",
+          "parentTaskId": 3
+        },
+        {
+          "id": 2,
+          "title": "Implement Form Validation and Preview Functionality",
+          "description": "Add validation logic to the form fields and create the live preview functionality to show how the card will look with changes.",
+          "dependencies": [
+            1
+          ],
+          "details": "Implementation details:\n1. Add validation logic for the title field:\n   - Ensure it's not empty\n   - Set character limits if needed\n   - Show appropriate error messages\n2. Implement validation for the location field\n3. Add validation for the date picker to ensure it stays within the selected month\n4. Create the preview component that updates in real-time as users make changes:\n   - Design a miniature version of the month card\n   - Ensure it reflects all current form values\n   - Update it dynamically as users type or select options\n5. Implement visual feedback for validation errors\n6. Add form submission prevention if validation fails\n\nTesting approach:\n- Test all validation rules with valid and invalid inputs\n- Verify error messages appear correctly\n- Check that the preview updates accurately with form changes\n- Test edge cases like very long text inputs\n- Verify the preview accurately represents how the final card will look",
+          "status": "pending",
+          "parentTaskId": 3
+        },
+        {
+          "id": 3,
+          "title": "Implement Data Persistence and Edit History Tracking",
+          "description": "Add Core Data integration to save event changes and implement the edit history tracking functionality.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Implementation details:\n1. Create Core Data integration:\n   - Connect form submission to Core Data save operations\n   - Implement logic to update existing events or create new ones\n   - Handle potential save errors gracefully\n2. Implement edit history tracking:\n   - Create or update the EditHistory model in Core Data\n   - Record timestamp of edits\n   - Store the device identifier for edit attribution\n   - Track what fields were changed\n3. Add confirmation dialog before saving changes\n4. Implement success/failure feedback after save attempts\n5. Add logic to populate the form with existing data when editing\n6. Ensure proper cleanup of Core Data context if the user cancels\n7. Optimize for performance with potential batch updates\n\nTesting approach:\n- Verify data is correctly saved to Core Data\n- Test editing existing events loads the correct data\n- Confirm edit history is properly recorded\n- Test cancellation doesn't affect stored data\n- Verify device attribution is correctly recorded\n- Test error handling with simulated Core Data failures",
+          "status": "pending",
+          "parentTaskId": 3
+        }
+      ]
     },
     {
       "id": 4,
