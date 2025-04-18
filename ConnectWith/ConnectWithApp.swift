@@ -398,11 +398,33 @@ struct OnboardingView: View {
     @State private var customName: String = ""
     @State private var isNamingDevice = false
     @State private var hasStartedScanning = false
+    @State private var showDebugView = false
+    @State private var tapCount = 0
+    @State private var lastTapTime: Date? = nil
     
     var body: some View {
         VStack(spacing: 24) {
             // Header
             OnboardingHeaderView()
+                .onTapGesture {
+                    // Secret debug view access: Tap header 5 times quickly
+                    let now = Date()
+                    
+                    // Reset counter if last tap was more than 2 seconds ago
+                    if let lastTap = lastTapTime, now.timeIntervalSince(lastTap) > 2 {
+                        tapCount = 0
+                    }
+                    
+                    // Increment tap count and check
+                    tapCount += 1
+                    lastTapTime = now
+                    
+                    // Show debug view after 5 quick taps
+                    if tapCount >= 5 {
+                        tapCount = 0
+                        showDebugView = true
+                    }
+                }
             
             Spacer()
             
@@ -468,6 +490,11 @@ struct OnboardingView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("This app needs Bluetooth access to find your family members. Please enable Bluetooth permission in Settings.")
+        }
+        .sheet(isPresented: $showDebugView) {
+            #if DEBUG
+            DebugInfoView(bluetoothManager: bluetoothManager)
+            #endif
         }
         .onAppear {
             // Clear any previously discovered devices
@@ -801,6 +828,33 @@ struct FamilyCalendarApp: App {
     @StateObject private var bluetoothManager = BluetoothManager()
     @StateObject private var calendarStore = CalendarStore.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("debugModeEnabled") private var debugModeEnabled = false
+    
+    init() {
+        // Check if we need to clear data in debug mode
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "debugModeEnabled") {
+            print("🐞 Debug mode enabled - clearing stored data")
+            resetStoredData()
+        }
+        #endif
+    }
+    
+    private func resetStoredData() {
+        // Clear all stored devices
+        DeviceStore.shared.deleteAllDevices()
+        
+        // Reset onboarding flag to start fresh
+        UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+        
+        // Clear any calendar data
+        // Note: The calendar store should be reinitialized with sample data on launch
+        
+        // Clear any stored Bluetooth-related preferences
+        UserDefaults.standard.removeObject(forKey: "DeviceCustomName")
+        
+        print("🐞 Debug reset completed - app will start as if fresh install")
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -822,6 +876,7 @@ struct FamilyCalendarApp: App {
 class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralManagerDelegate, CBPeripheralDelegate {
     static let serviceUUID = CBUUID(string: "4514d666-d6c9-49cb-bc31-dc6dfa28bd58")
     static let calendarCharacteristicUUID = CBUUID(string: "97d52a22-9292-48c6-a89f-8a71d89c5e9b")
+    static let handshakeCharacteristicUUID = CBUUID(string: "97d52a22-9292-48c6-a89f-8a71d89c5e9c")
     
     private var centralManager: CBCentralManager?
     private var peripheralManager: CBPeripheralManager?
@@ -830,6 +885,26 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     private var calendarService: CBMutableService?
     private var calendarCharacteristic: CBMutableCharacteristic?
+    private var handshakeCharacteristic: CBMutableCharacteristic?
+    
+    // Handshake-related properties
+    struct HandshakeMessage: Codable {
+        enum MessageType: String, Codable {
+            case hello   // Initial greeting
+            case ack     // Acknowledgement
+            case error   // Error response
+        }
+        
+        let type: MessageType
+        let deviceId: String
+        let deviceName: String
+        let timestamp: Date
+        let message: String?
+    }
+    
+    @Published var handshakeState: [UUID: String] = [:]  // Maps device ID to handshake state ("none", "sent", "received", "complete")
+    @Published var handshakeSuccess = false
+    @Published var handshakeError: String? = nil
     
     // Made accessible for debug view
     @Published var connectedPeripherals: [CBPeripheral] = []
@@ -969,12 +1044,21 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             permissions: [.readable, .writeable]
         )
         
+        // Create handshake characteristic for initial connection testing
+        handshakeCharacteristic = CBMutableCharacteristic(
+            type: BluetoothManager.handshakeCharacteristicUUID,
+            properties: [.read, .write, .notify],
+            value: nil,
+            permissions: [.readable, .writeable]
+        )
+        
         // Create a service with our UUID
         calendarService = CBMutableService(type: BluetoothManager.serviceUUID, primary: true)
         
-        // Add the calendar characteristic to the service
-        if let calendarCharacteristic = calendarCharacteristic {
-            calendarService?.characteristics = [calendarCharacteristic]
+        // Add both characteristics to the service
+        if let calendarCharacteristic = calendarCharacteristic,
+           let handshakeCharacteristic = handshakeCharacteristic {
+            calendarService?.characteristics = [calendarCharacteristic, handshakeCharacteristic]
         }
         
         // Only add the service if the peripheral manager is powered on
@@ -1030,6 +1114,166 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         // Confirm advertising started
         print("Advertising started with name: \(deviceName)")
+    }
+    
+    // MARK: - Handshake Methods
+    
+    // Create a handshake message
+    func createHandshakeMessage(type: HandshakeMessage.MessageType, message: String? = nil) -> Data? {
+        let handshakeMessage = HandshakeMessage(
+            type: type,
+            deviceId: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            deviceName: deviceName,
+            timestamp: Date(),
+            message: message
+        )
+        
+        return try? JSONEncoder().encode(handshakeMessage)
+    }
+    
+    // Process a received handshake message
+    func processHandshakeMessage(data: Data, from peripheral: CBPeripheral) {
+        print("🤝 HANDSHAKE: Processing received message, size: \(data.count) bytes")
+        
+        guard let receivedMessage = try? JSONDecoder().decode(HandshakeMessage.self, from: data) else {
+            print("❌ HANDSHAKE: Failed to decode message - invalid format")
+            handshakeError = "Invalid handshake message format"
+            addSyncLogEntry(
+                deviceName: "Unknown Device",
+                action: "Handshake Error",
+                details: "Invalid message format"
+            )
+            return
+        }
+        
+        // Update handshake state for this device
+        handshakeState[peripheral.identifier] = "received"
+        
+        print("🤝 HANDSHAKE: Received message of type: \(receivedMessage.type.rawValue)")
+        print("🤝 HANDSHAKE: From device: \(receivedMessage.deviceName) (\(receivedMessage.deviceId))")
+        print("🤝 HANDSHAKE: Message: \(receivedMessage.message ?? "none")")
+        
+        // Log the handshake
+        addSyncLogEntry(
+            deviceName: receivedMessage.deviceName,
+            action: "Handshake \(receivedMessage.type.rawValue)",
+            details: receivedMessage.message ?? ""
+        )
+        
+        switch receivedMessage.type {
+        case .hello:
+            print("🤝 HANDSHAKE: Received HELLO message, sending ACK")
+            // Respond with ACK
+            if let ackData = createHandshakeMessage(type: .ack, message: "Hello received") {
+                print("🤝 HANDSHAKE: Created ACK message, size: \(ackData.count) bytes")
+                
+                // Find handshake characteristic
+                var foundCharacteristic = false
+                for service in peripheral.services ?? [] {
+                    if service.uuid == BluetoothManager.serviceUUID {
+                        for characteristic in service.characteristics ?? [] {
+                            if characteristic.uuid == BluetoothManager.handshakeCharacteristicUUID {
+                                print("🤝 HANDSHAKE: Found handshake characteristic to send ACK")
+                                foundCharacteristic = true
+                                peripheral.writeValue(ackData, for: characteristic, type: .withResponse)
+                                handshakeState[peripheral.identifier] = "ack_sent"
+                                
+                                print("🤝 HANDSHAKE: Sent ACK response")
+                                addSyncLogEntry(
+                                    deviceName: receivedMessage.deviceName,
+                                    action: "Sent ACK",
+                                    details: "Response to HELLO"
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                if !foundCharacteristic {
+                    print("❌ HANDSHAKE: Could not find handshake characteristic to send ACK")
+                }
+            } else {
+                print("❌ HANDSHAKE: Failed to create ACK message")
+            }
+            
+        case .ack:
+            print("🎉 HANDSHAKE: Received ACK - Handshake COMPLETE!")
+            // Handshake complete!
+            handshakeState[peripheral.identifier] = "complete"
+            handshakeSuccess = true
+            
+            addSyncLogEntry(
+                deviceName: receivedMessage.deviceName,
+                action: "Handshake Complete",
+                details: "Ready for communication"
+            )
+            
+            print("🎯 HANDSHAKE: Now ready to perform calendar operations with \(receivedMessage.deviceName)")
+            
+        case .error:
+            print("❌ HANDSHAKE: Received ERROR message: \(receivedMessage.message ?? "Unknown error")")
+            // Log the error
+            handshakeError = receivedMessage.message ?? "Unknown error"
+            handshakeState[peripheral.identifier] = "error"
+            
+            addSyncLogEntry(
+                deviceName: receivedMessage.deviceName,
+                action: "Handshake Error",
+                details: receivedMessage.message ?? "Unknown error"
+            )
+        }
+    }
+    
+    // Initiate a handshake with a peripheral
+    func initiateHandshake(with peripheral: CBPeripheral) {
+        // Reset handshake state
+        handshakeSuccess = false
+        handshakeError = nil
+        handshakeState[peripheral.identifier] = "none"
+        
+        // Enhanced logging
+        print("🤝 HANDSHAKE: Starting handshake with device: \(peripheral.identifier)")
+        print("🤝 HANDSHAKE: Device name: \(peripheral.name ?? "Unknown")")
+        print("🤝 HANDSHAKE: Services count: \(peripheral.services?.count ?? 0)")
+        
+        // Find handshake characteristic
+        for service in peripheral.services ?? [] {
+            print("🤝 HANDSHAKE: Checking service: \(service.uuid)")
+            
+            if service.uuid == BluetoothManager.serviceUUID {
+                print("🤝 HANDSHAKE: Found our service!")
+                print("🤝 HANDSHAKE: Characteristics count: \(service.characteristics?.count ?? 0)")
+                
+                for characteristic in service.characteristics ?? [] {
+                    print("🤝 HANDSHAKE: Checking characteristic: \(characteristic.uuid)")
+                    
+                    if characteristic.uuid == BluetoothManager.handshakeCharacteristicUUID {
+                        print("🤝 HANDSHAKE: Found handshake characteristic!")
+                        
+                        // Create and send hello message
+                        if let helloData = createHandshakeMessage(type: .hello, message: "Hello from \(deviceName)") {
+                            print("🤝 HANDSHAKE: Sending HELLO message, size: \(helloData.count) bytes")
+                            peripheral.writeValue(helloData, for: characteristic, type: .withResponse)
+                            handshakeState[peripheral.identifier] = "sent"
+                            
+                            // Log the handshake attempt
+                            addSyncLogEntry(
+                                deviceName: getDeviceName(peripheral: peripheral, advertisementData: [:]),
+                                action: "Sent Hello",
+                                details: "Initiating handshake"
+                            )
+                        } else {
+                            print("❌ HANDSHAKE: Failed to create hello message")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // If we didn't find the characteristic, log that
+        if handshakeState[peripheral.identifier] == "none" {
+            print("❌ HANDSHAKE: Could not find handshake characteristic to send HELLO message")
+        }
     }
     
     // MARK: - Calendar Sync Methods
@@ -1196,6 +1440,25 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             let deviceName = getDeviceName(peripheral: peripheral, advertisementData: advertisementData)
             let servicesDesc = advertisementData[CBAdvertisementDataServiceUUIDsKey] != nil ? "Present" : "None"
             addSyncLogEntry(deviceName: deviceName, action: "Discovered", details: "RSSI: \(RSSI), Services: \(servicesDesc)")
+            
+            // Check if this device has our service UUID - if so, automatically connect
+            if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID],
+               serviceUUIDs.contains(BluetoothManager.serviceUUID) {
+                print("🎯 AUTO-CONNECT: Device has our service UUID, attempting to connect automatically...")
+                
+                // Stop scanning first to improve connection reliability
+                stopScanning()
+                
+                // Set peripheral delegate and connect
+                peripheral.delegate = self
+                central.connect(peripheral, options: nil)
+                
+                addSyncLogEntry(
+                    deviceName: deviceName,
+                    action: "Auto-connecting",
+                    details: "Device has our service UUID"
+                )
+            }
         }
     }
     
@@ -1229,14 +1492,19 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("Connected to peripheral: \(peripheral.identifier)")
+        print("🔌 CONNECT: Successfully connected to peripheral: \(peripheral.identifier)")
+        print("🔌 CONNECT: Device name: \(peripheral.name ?? "Unknown")")
         
         // Add to connected peripherals list
         if !connectedPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
             connectedPeripherals.append(peripheral)
+            print("🔌 CONNECT: Added to connected peripherals list (total: \(connectedPeripherals.count))")
+        } else {
+            print("🔌 CONNECT: Device already in connected peripherals list")
         }
         
         // Discover services
+        print("🔍 DISCOVER: Starting service discovery for service UUID: \(BluetoothManager.serviceUUID)")
         peripheral.discoverServices([BluetoothManager.serviceUUID])
     }
     
@@ -1266,67 +1534,157 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     // MARK: - CBPeripheralDelegate
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let services = peripheral.services else { return }
+        if let error = error {
+            print("❌ DISCOVER: Error discovering services: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let services = peripheral.services else {
+            print("❌ DISCOVER: No services found on peripheral: \(peripheral.identifier)")
+            return
+        }
+        
+        print("🔍 DISCOVER: Found \(services.count) services on peripheral: \(peripheral.identifier)")
         
         for service in services {
+            print("🔍 DISCOVER: Service: \(service.uuid)")
+            
             if service.uuid == BluetoothManager.serviceUUID {
-                // Discover the calendar characteristic
-                peripheral.discoverCharacteristics([BluetoothManager.calendarCharacteristicUUID], for: service)
+                print("🔍 DISCOVER: Found our service! Discovering characteristics...")
+                
+                // Discover BOTH characteristics
+                peripheral.discoverCharacteristics(
+                    [BluetoothManager.calendarCharacteristicUUID, BluetoothManager.handshakeCharacteristicUUID], 
+                    for: service
+                )
+            } else {
+                print("🔍 DISCOVER: Unknown service, not our target service UUID")
             }
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard let characteristics = service.characteristics else { return }
+        if let error = error {
+            print("❌ DISCOVER: Error discovering characteristics: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let characteristics = service.characteristics else {
+            print("❌ DISCOVER: No characteristics found for service: \(service.uuid)")
+            return
+        }
+        
+        print("🔍 DISCOVER: Found \(characteristics.count) characteristics for service: \(service.uuid)")
+        
+        var foundHandshake = false
+        var foundCalendar = false
         
         for characteristic in characteristics {
-            if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
-                // Subscribe to notifications for the characteristic
+            print("🔍 DISCOVER: Characteristic: \(characteristic.uuid)")
+            
+            if characteristic.uuid == BluetoothManager.handshakeCharacteristicUUID {
+                print("🔍 DISCOVER: Found handshake characteristic!")
+                foundHandshake = true
+                
+                // For handshake characteristic, subscribe and start the handshake
+                print("📲 SUBSCRIBE: Setting notify value for handshake characteristic")
                 peripheral.setNotifyValue(true, for: characteristic)
                 
-                // Read the current value 
-                peripheral.readValue(for: characteristic)
-                
-                // Also send our calendar data to the peripheral
-                if let calendarData = calendarStore.prepareEventsForSync() {
-                    peripheral.writeValue(calendarData, for: characteristic, type: .withResponse)
-                }
+                // Initiate handshake
+                print("🤝 HANDSHAKE: Starting handshake process")
+                initiateHandshake(with: peripheral)
             }
+            else if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+                print("🔍 DISCOVER: Found calendar characteristic!")
+                foundCalendar = true
+                
+                // Subscribe to notifications for the characteristic
+                print("📲 SUBSCRIBE: Setting notify value for calendar characteristic")
+                peripheral.setNotifyValue(true, for: characteristic)
+                
+                print("ℹ️ INFO: Calendar operations will happen after successful handshake")
+                // We'll only do calendar operations after successful handshake
+                // So we don't automatically read or send data here anymore
+            }
+        }
+        
+        if !foundHandshake {
+            print("❌ DISCOVER: Handshake characteristic NOT FOUND!")
+        }
+        
+        if !foundCalendar {
+            print("❌ DISCOVER: Calendar characteristic NOT FOUND!")
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+        if characteristic.uuid == BluetoothManager.handshakeCharacteristicUUID {
             if let data = characteristic.value {
-                // Process received calendar data
-                let syncCount = calendarStore.processSyncedEvents(data: data)
+                // Process handshake message
+                processHandshakeMessage(data: data, from: peripheral)
                 
-                // Update sync status
-                syncedEventsCount += syncCount
-                lastSyncTime = Date()
-                lastTransferTimestamp = Date()
-                
-                // For debug view
-                lastTransferredData = data
-                lastTransferDirection = "Received (as Central)"
-                
-                // Get the device name
-                if let storedDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString) {
-                    lastSyncDeviceName = storedDevice.name
-                } else if let name = peripheral.name {
-                    lastSyncDeviceName = name
-                } else {
-                    lastSyncDeviceName = "Unknown Device"
+                // If handshake is complete and successful, proceed with calendar sync
+                if handshakeSuccess && handshakeState[peripheral.identifier] == "complete" {
+                    // Find the calendar characteristic and proceed with calendar operations
+                    for service in peripheral.services ?? [] {
+                        if service.uuid == BluetoothManager.serviceUUID {
+                            for calendarChar in service.characteristics ?? [] {
+                                if calendarChar.uuid == BluetoothManager.calendarCharacteristicUUID {
+                                    // Read the current calendar data
+                                    peripheral.readValue(for: calendarChar)
+                                    
+                                    // Send our calendar data
+                                    if let calendarData = calendarStore.prepareEventsForSync() {
+                                        peripheral.writeValue(calendarData, for: calendarChar, type: .withResponse)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                
-                print("Synced \(syncCount) events with \(lastSyncDeviceName ?? "Unknown Device")")
-                
-                // Add to sync log
-                addSyncLogEntry(
-                    deviceName: lastSyncDeviceName ?? "Unknown Device",
-                    action: "Received Calendar Data",
-                    details: "Size: \(data.count) bytes, Events: \(syncCount)"
-                )
+            }
+        }
+        else if characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+            if let data = characteristic.value {
+                // Only process calendar data if handshake was successful
+                if handshakeSuccess && handshakeState[peripheral.identifier] == "complete" {
+                    // Process received calendar data
+                    let syncCount = calendarStore.processSyncedEvents(data: data)
+                    
+                    // Update sync status
+                    syncedEventsCount += syncCount
+                    lastSyncTime = Date()
+                    lastTransferTimestamp = Date()
+                    
+                    // For debug view
+                    lastTransferredData = data
+                    lastTransferDirection = "Received (as Central)"
+                    
+                    // Get the device name
+                    if let storedDevice = DeviceStore.shared.getDevice(identifier: peripheral.identifier.uuidString) {
+                        lastSyncDeviceName = storedDevice.name
+                    } else if let name = peripheral.name {
+                        lastSyncDeviceName = name
+                    } else {
+                        lastSyncDeviceName = "Unknown Device"
+                    }
+                    
+                    print("Synced \(syncCount) events with \(lastSyncDeviceName ?? "Unknown Device")")
+                    
+                    // Add to sync log
+                    addSyncLogEntry(
+                        deviceName: lastSyncDeviceName ?? "Unknown Device",
+                        action: "Received Calendar Data",
+                        details: "Size: \(data.count) bytes, Events: \(syncCount)"
+                    )
+                } else {
+                    // Log attempt to sync without handshake
+                    addSyncLogEntry(
+                        deviceName: "Unknown Device",
+                        action: "Sync Rejected",
+                        details: "Handshake not complete"
+                    )
+                }
                 
                 // If there was an error, log it
                 if let error = error {
@@ -1412,35 +1770,152 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for request in requests {
-            if request.characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+            if request.characteristic.uuid == BluetoothManager.handshakeCharacteristicUUID {
                 if let data = request.value {
-                    // Process received calendar data
-                    let syncCount = calendarStore.processSyncedEvents(data: data)
+                    print("🤝 HANDSHAKE (Peripheral): Received handshake write request, size: \(data.count) bytes")
                     
-                    // Update sync status
-                    syncedEventsCount += syncCount
-                    lastSyncTime = Date()
-                    lastTransferTimestamp = Date()
-                    
-                    // For debug view
-                    lastTransferredData = data
-                    lastTransferDirection = "Received"
-                    
-                    print("Processed \(syncCount) events from peripheral write")
-                    
-                    // Log for debug view
-                    let centralIdentifier = request.central.identifier.uuidString
-                    var deviceName = "Unknown Device"
-                    if let storedDevice = deviceStore.getDevice(identifier: centralIdentifier) {
-                        deviceName = storedDevice.name
+                    // Process handshake message as peripheral (receiving from central)
+                    guard let receivedMessage = try? JSONDecoder().decode(HandshakeMessage.self, from: data) else {
+                        print("❌ HANDSHAKE (Peripheral): Failed to decode message - invalid format")
+                        
+                        // Invalid message format
+                        addSyncLogEntry(
+                            deviceName: "Unknown Device",
+                            action: "Handshake Error (as Peripheral)",
+                            details: "Invalid message format"
+                        )
+                        
+                        // Create and send error message
+                        if let errorData = createHandshakeMessage(type: .error, message: "Invalid message format") {
+                            print("🤝 HANDSHAKE (Peripheral): Created ERROR response message")
+                            
+                            // Update characteristic value
+                            handshakeCharacteristic?.value = errorData
+                            
+                            // Notify subscribers
+                            peripheralManager?.updateValue(
+                                errorData,
+                                for: handshakeCharacteristic!,
+                                onSubscribedCentrals: [request.central]
+                            )
+                            
+                            print("🤝 HANDSHAKE (Peripheral): Sent ERROR response")
+                        } else {
+                            print("❌ HANDSHAKE (Peripheral): Failed to create ERROR message")
+                        }
+                        continue
                     }
                     
-                    // Add to sync log
+                    print("🤝 HANDSHAKE (Peripheral): Successfully decoded message of type: \(receivedMessage.type.rawValue)")
+                    print("🤝 HANDSHAKE (Peripheral): From device: \(receivedMessage.deviceName) (\(receivedMessage.deviceId))")
+                    print("🤝 HANDSHAKE (Peripheral): Message: \(receivedMessage.message ?? "none")")
+                    
+                    // Get the central identifier for state tracking
+                    let centralId = request.central.identifier
+                    
+                    // Log the handshake message
                     addSyncLogEntry(
-                        deviceName: deviceName,
-                        action: "Received Data",
-                        details: "Size: \(data.count) bytes, Events: \(syncCount)"
+                        deviceName: receivedMessage.deviceName,
+                        action: "Handshake \(receivedMessage.type.rawValue) (as Peripheral)",
+                        details: receivedMessage.message ?? ""
                     )
+                    
+                    // Update handshake state for this central
+                    handshakeState[centralId] = "received"
+                    
+                    // Process by message type
+                    switch receivedMessage.type {
+                    case .hello:
+                        // Send ACK response
+                        if let ackData = createHandshakeMessage(type: .ack, message: "Hello received") {
+                            // Update characteristic value
+                            handshakeCharacteristic?.value = ackData
+                            
+                            // Track state
+                            handshakeState[centralId] = "ack_sent"
+                            
+                            // Notify subscribers
+                            peripheralManager?.updateValue(
+                                ackData,
+                                for: handshakeCharacteristic!,
+                                onSubscribedCentrals: [request.central]
+                            )
+                            
+                            addSyncLogEntry(
+                                deviceName: receivedMessage.deviceName,
+                                action: "Sent ACK (as Peripheral)",
+                                details: "Response to HELLO"
+                            )
+                        }
+                        
+                    case .ack:
+                        // Mark handshake as complete
+                        handshakeState[centralId] = "complete"
+                        handshakeSuccess = true
+                        
+                        addSyncLogEntry(
+                            deviceName: receivedMessage.deviceName,
+                            action: "Handshake Complete (as Peripheral)",
+                            details: "Ready for communication"
+                        )
+                        
+                    case .error:
+                        // Log the error
+                        handshakeError = receivedMessage.message ?? "Unknown error"
+                        handshakeState[centralId] = "error"
+                        
+                        addSyncLogEntry(
+                            deviceName: receivedMessage.deviceName,
+                            action: "Handshake Error (as Peripheral)",
+                            details: receivedMessage.message ?? "Unknown error"
+                        )
+                    }
+                }
+            }
+            else if request.characteristic.uuid == BluetoothManager.calendarCharacteristicUUID {
+                // Get the central identifier for state checking
+                let centralId = request.central.identifier
+                
+                // Only process calendar data if handshake was successful
+                if handshakeSuccess && handshakeState[centralId] == "complete" {
+                    if let data = request.value {
+                        // Process received calendar data
+                        let syncCount = calendarStore.processSyncedEvents(data: data)
+                        
+                        // Update sync status
+                        syncedEventsCount += syncCount
+                        lastSyncTime = Date()
+                        lastTransferTimestamp = Date()
+                        
+                        // For debug view
+                        lastTransferredData = data
+                        lastTransferDirection = "Received (as Peripheral)"
+                        
+                        print("Processed \(syncCount) events from peripheral write")
+                        
+                        // Log for debug view
+                        let centralIdentifier = request.central.identifier.uuidString
+                        var deviceName = "Unknown Device"
+                        if let storedDevice = deviceStore.getDevice(identifier: centralIdentifier) {
+                            deviceName = storedDevice.name
+                        }
+                        
+                        // Add to sync log
+                        addSyncLogEntry(
+                            deviceName: deviceName,
+                            action: "Received Calendar Data",
+                            details: "Size: \(data.count) bytes, Events: \(syncCount)"
+                        )
+                    }
+                } else {
+                    // Handshake not complete, reject calendar data
+                    addSyncLogEntry(
+                        deviceName: "Unknown Device",
+                        action: "Calendar Data Rejected (as Peripheral)",
+                        details: "Handshake not complete"
+                    )
+                    
+                    // Still respond with success to avoid connection issues
                 }
             }
         }

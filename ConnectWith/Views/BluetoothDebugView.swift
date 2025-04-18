@@ -236,6 +236,17 @@ struct BluetoothDebugView: View {
             DetailRow(label: "Scan Progress", value: "\(Int(bluetoothManager.scanningProgress * 100))%")
             DetailRow(label: "Connected Devices", value: "\(bluetoothManager.connectedPeripherals.count)")
             DetailRow(label: "Sync In Progress", value: bluetoothManager.syncInProgress ? "Yes" : "No")
+            DetailRow(label: "Debug Mode", value: UserDefaults.standard.bool(forKey: "debugModeEnabled") ? "Enabled" : "Disabled")
+            
+            // Add toggle for debug mode
+            Toggle("Debug Mode Reset", isOn: Binding(
+                get: { UserDefaults.standard.bool(forKey: "debugModeEnabled") },
+                set: { newValue in 
+                    UserDefaults.standard.set(newValue, forKey: "debugModeEnabled")
+                    addLog("Debug mode \(newValue ? "enabled" : "disabled")")
+                }
+            ))
+            .toggleStyle(SwitchToggleStyle(tint: .blue))
             
             Divider()
             
@@ -249,18 +260,85 @@ struct BluetoothDebugView: View {
                     .fontWeight(.medium)
                 
                 ForEach(bluetoothManager.connectedPeripherals, id: \.identifier) { peripheral in
-                    HStack {
-                        Text(getDeviceName(peripheral: peripheral))
-                        Spacer()
-                        Text(peripheral.identifier.uuidString)
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text(getDeviceName(peripheral: peripheral))
+                            Spacer()
+                            Text(peripheral.identifier.uuidString.prefix(8) + "...")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        // Show handshake status if available
+                        if let state = bluetoothManager.handshakeState[peripheral.identifier] {
+                            HStack {
+                                Text("Handshake: ")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                Text(state.capitalized)
+                                    .font(.caption)
+                                    .foregroundColor(handshakeStateColor(state))
+                            }
+                        }
                     }
                     .padding(.vertical, 4)
                 }
             }
+            
+            // Add a summary of overall handshake state
+            if bluetoothManager.handshakeSuccess {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    
+                    Text("Handshake Successful")
+                        .font(.callout)
+                        .foregroundColor(.green)
+                        .fontWeight(.bold)
+                }
+                .padding(.top, 4)
+            } else if bluetoothManager.handshakeError != nil {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    
+                    Text("Handshake Error: \(bluetoothManager.handshakeError!)")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                .padding(.top, 4)
+            } else if !bluetoothManager.handshakeState.isEmpty {
+                HStack {
+                    Image(systemName: "hourglass")
+                        .foregroundColor(.orange)
+                    
+                    Text("Handshake In Progress...")
+                        .font(.callout)
+                        .foregroundColor(.orange)
+                        .fontWeight(.bold)
+                }
+                .padding(.top, 4)
+            }
         }
         .padding()
+    }
+    
+    private func handshakeStateColor(_ state: String) -> Color {
+        switch state {
+        case "none":
+            return .gray
+        case "sent", "received":
+            return .orange
+        case "ack_sent":
+            return .blue
+        case "complete":
+            return .green
+        case "error":
+            return .red
+        default:
+            return .gray
+        }
     }
     
     private var syncHistorySection: some View {

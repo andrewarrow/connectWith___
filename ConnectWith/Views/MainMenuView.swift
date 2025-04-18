@@ -209,6 +209,24 @@ struct DebugInfoView: View {
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     @State private var isAutoRefreshing = false
     
+    // Helper function to color handshake states
+    private func handshakeStateColor(_ state: String) -> Color {
+        switch state {
+        case "none":
+            return .gray
+        case "sent", "received":
+            return .orange
+        case "ack_sent":
+            return .blue
+        case "complete":
+            return .green
+        case "error":
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -239,11 +257,104 @@ struct DebugInfoView: View {
                             DebugRow(label: "Scan Progress", value: "\(Int(bluetoothManager.scanningProgress * 100))%")
                             DebugRow(label: "Connected Devices", value: "\(bluetoothManager.connectedPeripherals.count)")
                             DebugRow(label: "Sync In Progress", value: bluetoothManager.syncInProgress ? "Yes" : "No")
+                            DebugRow(label: "Debug Mode", value: UserDefaults.standard.bool(forKey: "debugModeEnabled") ? "Enabled" : "Disabled")
+                            
+                            // Add toggle for debug mode
+                            Toggle("Debug Mode Reset", isOn: Binding(
+                                get: { UserDefaults.standard.bool(forKey: "debugModeEnabled") },
+                                set: { newValue in 
+                                    UserDefaults.standard.set(newValue, forKey: "debugModeEnabled")
+                                    logMessages.insert("Debug mode \(newValue ? "enabled" : "disabled")", at: 0)
+                                }
+                            ))
+                            .toggleStyle(SwitchToggleStyle(tint: .blue))
                             
                             if let lastSyncTime = bluetoothManager.lastSyncTime {
                                 DebugRow(label: "Last Sync", value: formatDateTime(lastSyncTime))
                                 DebugRow(label: "With Device", value: bluetoothManager.lastSyncDeviceName ?? "Unknown")
                                 DebugRow(label: "Events Synced", value: "\(bluetoothManager.syncedEventsCount)")
+                            }
+                            
+                            // Show handshake status with prominent indicators
+                            if !bluetoothManager.handshakeState.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Handshake Status:")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                        .padding(.top, 8)
+                                    
+                                    // Summary status indicator
+                                    if bluetoothManager.handshakeSuccess {
+                                        HStack {
+                                            Image(systemName: "checkmark.seal.fill")
+                                                .font(.title2)
+                                                .foregroundColor(.green)
+                                            Text("Handshake Complete")
+                                                .font(.headline)
+                                                .foregroundColor(.green)
+                                        }
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color.green.opacity(0.1))
+                                        .cornerRadius(8)
+                                    } else if bluetoothManager.handshakeError != nil {
+                                        HStack {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(.red)
+                                            VStack(alignment: .leading) {
+                                                Text("Handshake Failed")
+                                                    .font(.headline)
+                                                    .foregroundColor(.red)
+                                                Text("Error: \(bluetoothManager.handshakeError!)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.red)
+                                            }
+                                        }
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color.red.opacity(0.1))
+                                        .cornerRadius(8)
+                                    } else {
+                                        HStack {
+                                            Image(systemName: "clock.arrow.2.circlepath")
+                                                .font(.title2)
+                                                .foregroundColor(.orange)
+                                            Text("Handshake In Progress")
+                                                .font(.headline)
+                                                .foregroundColor(.orange)
+                                        }
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color.orange.opacity(0.1))
+                                        .cornerRadius(8)
+                                    }
+                                    
+                                    // Device-specific status
+                                    ForEach(Array(bluetoothManager.handshakeState.keys), id: \.self) { deviceId in
+                                        if let state = bluetoothManager.handshakeState[deviceId] {
+                                            HStack {
+                                                Text("\(deviceId.uuidString.prefix(8))...")
+                                                    .font(.caption)
+                                                    .foregroundColor(.gray)
+                                                
+                                                Spacer()
+                                                
+                                                HStack {
+                                                    Circle()
+                                                        .fill(handshakeStateColor(state))
+                                                        .frame(width: 10, height: 10)
+                                                    
+                                                    Text(state.capitalized)
+                                                        .font(.caption)
+                                                        .fontWeight(.medium)
+                                                        .foregroundColor(handshakeStateColor(state))
+                                                }
+                                            }
+                                            .padding(.vertical, 2)
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding()
@@ -1285,6 +1396,7 @@ struct SettingsView: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject private var bluetoothManager: BluetoothManager
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage("debugModeEnabled") private var debugModeEnabled = false
     @State private var showingResetConfirmation = false
     @State private var showingRestartAlert = false
     
@@ -1299,6 +1411,18 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
+                
+                #if DEBUG
+                Section(header: Text("Developer Options")) {
+                    Toggle("Debug Mode", isOn: $debugModeEnabled)
+                    
+                    if debugModeEnabled {
+                        Text("When enabled, all stored data will be cleared each time the app starts, forcing you through the onboarding process.")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
+                #endif
                 
                 Section(header: Text("Data Management"), footer: Text("This will delete all saved device data and return you to the onboarding screen.")) {
                     Button(action: {
