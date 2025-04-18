@@ -56,14 +56,24 @@ struct FamilyCalendarView: View {
                                 }
                             )
                             .tag(index)
+                            .id("monthCard-\(index)") // Provide stable ID for focus
                         }
                     }
                     .tabViewStyle(PageTabViewStyle(indexDisplayMode: .automatic))
                     .frame(height: 260)
+                    .accessibilityAction(.escape) {
+                        // Allow escape key to leave carousel
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Monthly event cards")
+                    .accessibilityHint("Swipe left or right to navigate between months")
                     
                     // Month selector with text and buttons
                     HStack(spacing: 24) {
                         Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            
                             withAnimation {
                                 currentMonthIndex = max(0, currentMonthIndex - 1)
                             }
@@ -76,13 +86,19 @@ struct FamilyCalendarView: View {
                                 .cornerRadius(22)
                         }
                         .disabled(currentMonthIndex <= 0)
+                        .accessibilityLabel("Previous month")
+                        .accessibilityHint("Navigate to \(currentMonthIndex > 0 ? Month.allCases[currentMonthIndex - 1].rawValue : "no previous month")")
                         
                         Text(Month.allCases[currentMonthIndex].rawValue)
                             .font(.title2)
                             .fontWeight(.semibold)
                             .frame(minWidth: 120)
+                            .accessibilityAddTraits(.isHeader)
                         
                         Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            
                             withAnimation {
                                 currentMonthIndex = min(11, currentMonthIndex + 1)
                             }
@@ -95,6 +111,8 @@ struct FamilyCalendarView: View {
                                 .cornerRadius(22)
                         }
                         .disabled(currentMonthIndex >= 11)
+                        .accessibilityLabel("Next month")
+                        .accessibilityHint("Navigate to \(currentMonthIndex < 11 ? Month.allCases[currentMonthIndex + 1].rawValue : "no next month")")
                     }
                     .padding(.horizontal)
                     
@@ -141,6 +159,7 @@ struct FamilyCalendarView: View {
             Text("Event Details")
                 .font(.headline)
                 .padding(.horizontal)
+                .accessibilityAddTraits(.isHeader)
             
             VStack(alignment: .leading, spacing: 12) {
                 if let event = currentEvent {
@@ -154,6 +173,9 @@ struct FamilyCalendarView: View {
                     DetailsRow(icon: "calendar", title: "Date", value: "Day \(event.day)")
                     
                     Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        
                         selectedMonth = currentMonth
                         selectedEvent = event
                         isEditingEvent = true
@@ -166,6 +188,7 @@ struct FamilyCalendarView: View {
                             .background(Color.blue)
                             .cornerRadius(10)
                     }
+                    .accessibilityHint("Opens a form to edit the \(currentMonth.rawValue) event")
                     .padding(.top, 8)
                 } else {
                     // Empty state
@@ -176,13 +199,18 @@ struct FamilyCalendarView: View {
                             Image(systemName: "calendar.badge.plus")
                                 .font(.system(size: 32))
                                 .foregroundColor(.gray)
+                                .accessibility(hidden: true) // Hide from VoiceOver since it's decorative
                             
                             Text("No event planned for \(currentMonth.rawValue)")
                                 .font(.body)
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
+                                .accessibilityLabel("No event planned for \(currentMonth.rawValue)")
                             
                             Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.impactOccurred()
+                                
                                 selectedMonth = currentMonth
                                 selectedEvent = nil
                                 isEditingEvent = true
@@ -195,6 +223,7 @@ struct FamilyCalendarView: View {
                                     .background(Color.blue)
                                     .cornerRadius(10)
                             }
+                            .accessibilityHint("Opens a form to add an event for \(currentMonth.rawValue)")
                         }
                         
                         Spacer()
@@ -206,6 +235,7 @@ struct FamilyCalendarView: View {
             .background(Color(.secondarySystemBackground))
             .cornerRadius(12)
             .padding(.horizontal)
+            .accessibilityElement(children: .contain)  // Keep child elements accessible to VoiceOver
         }
     }
     
@@ -283,6 +313,8 @@ struct MonthCardContainer: View {
                 onTap: onTap
             )
             .padding(.horizontal)
+            // Ensure proper keyboard focus navigation
+            .focusable(true)
         }
     }
 }
@@ -292,22 +324,31 @@ struct DetailsRow: View {
     let icon: String
     let title: String
     let value: String
+    @Environment(\.sizeCategory) var sizeCategory
     
     var body: some View {
         HStack(alignment: .top) {
             Image(systemName: icon)
                 .foregroundColor(.blue)
                 .frame(width: 24)
+                .imageScale(sizeCategory.isAccessibilityCategory ? .large : .medium)
+                .accessibility(hidden: true) // Hide icon from VoiceOver
             
             Text(title + ":")
                 .foregroundColor(.secondary)
-                .frame(width: 70, alignment: .leading)
+                .frame(width: sizeCategory.isAccessibilityCategory ? 90 : 70, alignment: .leading)
+                .minimumScaleFactor(0.8)
             
             Text(value)
                 .foregroundColor(.primary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
             
             Spacer()
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
+        .padding(.vertical, 2) // Extra padding for touch targets
     }
 }
 
@@ -319,6 +360,7 @@ struct EventEditSheet: View {
     let onDelete: () -> Void
     
     @Environment(\.presentationMode) private var presentationMode
+    @Environment(\.sizeCategory) private var sizeCategory
     @State private var title: String
     @State private var location: String
     @State private var day: Int
@@ -339,30 +381,53 @@ struct EventEditSheet: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Event Details")) {
-                    TextField("Event Title", text: $title)
-                    TextField("Location", text: $location)
+                Section(header: Text("Event Details")
+                    .accessibilityAddTraits(.isHeader)) {
                     
-                    Picker("Day", selection: $day) {
-                        ForEach(1...month.maxDays, id: \.self) { day in
-                            Text("\(day)").tag(day)
+                    TextField("Event Title", text: $title)
+                        .accessibilityLabel("Event Title")
+                        .accessibilityHint("Enter a title for this event")
+                        .submitLabel(.next)
+                    
+                    TextField("Location", text: $location)
+                        .accessibilityLabel("Location")
+                        .accessibilityHint("Enter the location for this event")
+                        .submitLabel(.next)
+                    
+                    VStack(alignment: .leading) {
+                        Text("Day")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .accessibilityHidden(true)
+                        
+                        Picker("Day", selection: $day) {
+                            ForEach(1...month.maxDays, id: \.self) { day in
+                                Text("\(day)").tag(day)
+                            }
                         }
+                        .pickerStyle(WheelPickerStyle())
+                        .accessibilityLabel("Day of month")
+                        .accessibilityHint("Select the day in \(month.rawValue) for this event")
                     }
-                    .pickerStyle(WheelPickerStyle())
                 }
                 
                 if event != nil {
                     Section {
                         Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .heavy)
+                            generator.impactOccurred()
                             showDeleteConfirmation = true
                         }) {
                             HStack {
                                 Spacer()
                                 Text("Delete Event")
                                     .foregroundColor(.red)
+                                    .padding(.vertical, 8) // Larger touch target
                                 Spacer()
                             }
                         }
+                        .accessibilityLabel("Delete Event")
+                        .accessibilityHint("Deletes this event from the \(month.rawValue) card")
                     }
                 }
             }
@@ -371,16 +436,25 @@ struct EventEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
                         presentationMode.wrappedValue.dismiss()
                     }
+                    .accessibilityHint("Dismisses this form without saving changes")
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
                         onSave(title, location, day)
                         presentationMode.wrappedValue.dismiss()
                     }
                     .disabled(title.isEmpty || location.isEmpty)
+                    .accessibilityLabel(title.isEmpty || location.isEmpty ? "Save (Disabled)" : "Save")
+                    .accessibilityHint(title.isEmpty || location.isEmpty ? 
+                        "Cannot save until title and location are filled in" : 
+                        "Saves the event details and returns to the calendar view")
                 }
             }
             .alert(isPresented: $showDeleteConfirmation) {
@@ -394,6 +468,9 @@ struct EventEditSheet: View {
                     secondaryButton: .cancel()
                 )
             }
+        }
+        .accessibilityAction(.escape) {
+            presentationMode.wrappedValue.dismiss()
         }
     }
 }
